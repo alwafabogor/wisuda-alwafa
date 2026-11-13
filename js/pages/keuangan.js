@@ -1,0 +1,91 @@
+/* Keuangan — RAB, PJ Belanja (Panitia Pegawai), realisasi + invoice + bukti transfer, pemasukan */
+App.page('keuangan', async function (view) {
+  const { esc, API, SWR, Sesi, drawer, modal, konfirmasi, toast, rupiah, ringkasRp, kompresGambar, bacaBase64, driveImg, eksporXLSX, angka } = SW;
+  const { ic, pill, kosong, columns, formHtml, formVal, formCek, dropzone, PAL } = UI;
+  if (App.perluKegiatan(view)) return;
+  const sa = Sesi.is('SUPERADMIN') && !App.arsip();
+  let D = null, tab = 'rab';
+  view.innerHTML = App.head('Keuangan & RAB', 'Hanya terlihat oleh Panitia Pegawai. PJ Belanja yang ditunjuk mencatat penggunaan dana + invoice + bukti transfer — dashboard otomatis terbarui.', '<button class="btn" data-xls>' + ic('table_view') + 'Ekspor</button>' + (sa ? '<button class="btn primary" data-addpos>' + ic('add') + 'Pos RAB</button>' : '')) +
+    '<div data-top>' + UI.skeleton(4) + '</div><div class="tabs mt"><button data-t="rab" class="on">' + ic('receipt_long') + 'RAB & Realisasi</button><button data-t="masuk">' + ic('savings') + 'Pemasukan</button><button data-t="riwayat">' + ic('history') + 'Riwayat Belanja</button></div><div data-body></div>';
+  const top = view.querySelector('[data-top]'), body = view.querySelector('[data-body]');
+  function render() {
+    if (!D) return; const k = D.ringkas;
+    top.innerHTML = '<div class="grid g3"><div class="card sky stat"><div class="lbl">Total RAB <span class="ico">' + ic('request_quote') + '</span></div><div class="big num" style="font-size:30px">' + rupiah(k.totalRAB) + '</div><div class="foot"><span>' + D.pos.length + ' pos anggaran</span><span>' + k.jumlahWisudawan + ' wisudawan</span></div></div>' +
+      '<div class="card yellow stat"><div class="lbl">Total Realisasi <span class="ico">' + ic('shopping_cart') + '</span></div><div class="big num" style="font-size:30px">' + rupiah(k.totalRealisasi) + '</div><div class="bar"><i style="width:' + Math.min(100, k.persenTerpakai) + '%"></i></div><div class="foot" style="margin-top:8px"><span>' + k.persenTerpakai + '% terpakai</span></div></div>' +
+      '<div class="card ' + (k.saldo < 0 ? '' : 'mint') + ' stat" style="' + (k.saldo < 0 ? 'background:#FEE2E2' : '') + '"><div class="lbl">Sisa Anggaran <span class="ico">' + ic('account_balance_wallet') + '</span></div><div class="big num" style="font-size:30px">' + rupiah(k.sisa) + '</div><div class="foot"><span>Pemasukan ' + rupiah(k.totalPemasukan) + '</span><span>Proyeksi ' + ringkasRp(k.proyeksiPemasukan) + '</span></div><div style="margin-top:8px">' + (k.saldo < 0 ? pill('Proyeksi defisit ' + rupiah(k.saldo), 'bad') : pill('Saldo proyeksi ' + rupiah(k.saldo), 'ok')) + '</div></div></div>' +
+      (D.peringatan.length ? '<div class="notice bad mt">' + ic('warning') + '<div>' + D.peringatan.map(esc).join('<br>') + '</div></div>' : '') +
+      '<div class="card mt"><div class="card-h"><h3>Anggaran vs Realisasi per Kelompok</h3>' + (D.saya.pj ? pill('Anda PJ Belanja', 'lilac') : '') + '</div><div data-chart></div></div>';
+    columns(top.querySelector('[data-chart]'), { labels: D.kelompok.map((x) => x.kelompok), series: [{ name: 'RAB', values: D.kelompok.map((x) => x.rab), color: PAL[1] }, { name: 'Realisasi', values: D.kelompok.map((x) => x.realisasi), color: PAL[0] }], fmt: ringkasRp, aria: 'RAB vs realisasi' });
+    if (tab === 'rab') {
+      const grp = {}; D.pos.forEach((p) => (grp[p.Kelompok] = grp[p.Kelompok] || []).push(p));
+      body.innerHTML = '<div class="card pad0"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="r">Qty × Pcs × Harga</th><th class="r">Anggaran</th><th>PJ Belanja</th><th>Realisasi</th><th>Status</th><th></th></tr></thead><tbody>' +
+        Object.keys(grp).map((g) => (grp[g].length > 1 || grp[g][0].Item !== g ? '<tr><td colspan="7" style="background:#F7F5EF;font-weight:600">' + esc(g) + '</td></tr>' : '') + grp[g].map((p) => {
+          const pct = p.Nominal ? Math.min(100, Math.round(p.Terpakai / p.Nominal * 100)) : 0, mine = p.PJEmail && p.PJEmail === Sesi.me.email;
+          return '<tr data-id="' + p.PosID + '" style="cursor:pointer"><td><b>' + esc(p.Item) + '</b>' + (p.SumberPcs === 'WISUDAWAN' ? '<div class="tiny muted">pcs otomatis = jumlah wisudawan</div>' : '') + '</td><td class="r num small">' + angka(p.Qty) + ' × ' + angka(p.PcsEfektif) + ' × ' + rupiah(p.Harga) + '</td><td class="r num b">' + rupiah(p.Nominal) + '</td><td>' + (p.PJNama ? '<span class="person">' + UI.avatar(p.PJNama, '', 'sm') + '<span class="small">' + esc(p.PJNama) + (mine ? ' (Anda)' : '') + '</span></span>' : '<span class="muted small">— belum ditunjuk —</span>') + '</td><td style="min-width:140px"><div class="small num">' + rupiah(p.Terpakai) + '</div><div class="bar light" style="height:6px"><i style="width:' + pct + '%;' + (p.Status === 'MELEBIHI' ? 'background:#991B1B' : '') + '"></i></div></td><td>' + pill(p.Status === 'MELEBIHI' ? 'Melebihi' : p.Status === 'SESUAI' ? 'Sesuai' : p.Status === 'PROSES' ? 'Proses' : 'Belum', p.Status === 'MELEBIHI' ? 'bad' : p.Status === 'SESUAI' ? 'ok' : p.Status === 'PROSES' ? 'info' : 'mute') + '</td><td class="act">' + (mine || sa ? '<button class="btn xs primary" data-real="' + p.PosID + '">' + ic('add') + 'Realisasi</button>' : '') + '</td></tr>';
+        }).join('')).join('') + '</tbody><tfoot><tr><td colspan="2" class="r b">TOTAL</td><td class="r num b">' + rupiah(D.ringkas.totalRAB) + '</td><td></td><td class="num b">' + rupiah(D.ringkas.totalRealisasi) + '</td><td colspan="2"></td></tr></tfoot></table></div></div>';
+    } else if (tab === 'masuk') {
+      const boleh = sa || (Sesi.is('PEGAWAI') && Sesi.flag('PJ_BELANJA'));
+      body.innerHTML = '<div class="row sb mb"><span class="muted">Biaya per wisudawan: <b>' + rupiah(D.ringkas.biayaPerWisudawan) + '</b> (atur di Pengaturan → Variabel: <span class="kbd">biaya_wisuda</span>)</span>' + (boleh && !App.arsip() ? '<button class="btn primary" data-addmasuk>' + ic('add') + 'Catat pemasukan</button>' : '') + '</div><div class="card pad0"><table class="tbl"><thead><tr><th>Tanggal</th><th>Sumber</th><th class="r">Nominal</th><th>Keterangan</th><th>Bukti</th></tr></thead><tbody>' +
+        (D.pemasukan.map((x) => '<tr><td>' + esc(SW.tglID(x.Tanggal)) + '</td><td>' + esc(x.Sumber || '-') + '</td><td class="r num b">' + rupiah(x.Nominal) + '</td><td>' + esc(x.Keterangan || '') + '</td><td>' + (x.BuktiID ? '<button class="btn xs" data-lihat="' + x.BuktiID + '">' + ic('image') + '</button>' : '') + '</td></tr>').join('') || '<tr><td colspan="5">' + kosong('Belum ada pemasukan tercatat', 'Proyeksi dihitung dari biaya per wisudawan.', 'savings') + '</td></tr>') + '</tbody></table></div>';
+    } else {
+      body.innerHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Tanggal</th><th>Pos</th><th>Vendor</th><th class="r">Nominal</th><th>Oleh</th><th>Berkas</th><th>Status</th></tr></thead><tbody>' +
+        (D.realisasi.map((x) => { const p = D.pos.find((y) => y.PosID === x.PosID) || {}; return '<tr><td>' + esc(SW.tglID(x.Tanggal)) + '</td><td>' + esc(p.Item || x.PosID) + '</td><td>' + esc(x.Vendor || '-') + '</td><td class="r num b">' + rupiah(x.Nominal) + '</td><td class="small">' + esc(x.OlehNama || '') + '</td><td>' + (x.InvoiceID ? '<button class="btn xs" data-lihat="' + x.InvoiceID + '">Invoice</button> ' : '') + (x.BuktiTFID ? '<button class="btn xs" data-lihat="' + x.BuktiTFID + '">TF</button>' : '') + '</td><td>' + pill(x.Status) + '</td></tr>'; }).join('') || '<tr><td colspan="7">' + kosong('Belum ada belanja', '', 'shopping_cart') + '</td></tr>') + '</tbody></table></div>';
+    }
+  }
+  async function unggah(file, kategori) {
+    const isImg = /^image\//.test(file.type);
+    const data = isImg ? (await kompresGambar(file, 1800, 0.82)).dataUrl : await bacaBase64(file);
+    const r = await API.write('file.upload', { base64: data, mime: isImg ? 'image/jpeg' : file.type, nama: file.name, kategori }, { silent: true });
+    if (!r.success) { toast(r.message, 'err'); return ''; }
+    return r.data.id;
+  }
+  function drawerPos(p) {
+    const real = D.realisasi.filter((x) => x.PosID === p.PosID), mine = (p.PJEmail === Sesi.me.email) || sa;
+    const b = document.createElement('div');
+    b.innerHTML = '<div class="card cream"><div class="row sb"><b>' + esc(p.Item) + '</b>' + pill(p.Kelompok, 'mute') + '</div><div class="grid g3 mt small"><div>Anggaran<br><b class="num">' + rupiah(p.Nominal) + '</b></div><div>Terpakai<br><b class="num">' + rupiah(p.Terpakai) + '</b></div><div>Sisa<br><b class="num" style="color:' + (p.Sisa < 0 ? '#991B1B' : '#166534') + '">' + rupiah(p.Sisa) + '</b></div></div></div>' +
+      (sa ? '<div class="field mt"><span>PJ Belanja (hanya Panitia Pegawai)</span><div class="row"><select class="inp" data-pj style="flex:1"><option value="">— tidak ada —</option>' + D.pegawai.map((x) => '<option value="' + esc(x.email) + '"' + (x.email === p.PJEmail ? ' selected' : '') + '>' + esc(x.nama) + '</option>').join('') + '</select><button class="btn" data-setpj>Tetapkan</button></div></div>' : '') +
+      '<h3 class="mt">Realisasi (' + real.length + ')</h3><div class="col mt" style="gap:8px">' + (real.map((x) => '<div class="card flat" style="padding:12px"><div class="row sb"><b class="num">' + rupiah(x.Nominal) + '</b><span class="small muted">' + esc(SW.tglID(x.Tanggal)) + '</span></div><div class="small">' + esc(x.Vendor || '') + ' · ' + esc(x.Keterangan || '') + '</div><div class="row mt" style="gap:6px">' + (x.InvoiceID ? '<button class="btn xs" data-lihat="' + x.InvoiceID + '">' + ic('receipt') + 'Invoice</button>' : pill('Invoice belum', 'warn')) + (x.BuktiTFID ? '<button class="btn xs" data-lihat="' + x.BuktiTFID + '">' + ic('payments') + 'Bukti TF</button>' : pill('Bukti TF belum', 'warn')) + pill(x.Status) + (mine && x.Status !== 'Batal' ? '<button class="btn xs ghost" data-batal="' + x.RealisasiID + '">Batalkan</button>' : '') + '</div></div>').join('') || '<div class="small muted">Belum ada realisasi.</div>') + '</div>' +
+      (mine && !App.arsip() ? '<div class="card mt"><h3>' + ic('add_card') + ' Catat penggunaan dana</h3><div class="form mt"><label class="field"><span>Tanggal</span><input type="date" data-tg value="' + new Date().toISOString().slice(0, 10) + '"></label><label class="field"><span>Nominal (Rp)</span><input type="number" data-nom></label><label class="field"><span>Vendor / toko</span><input data-ven></label><label class="field"><span>Keterangan</span><input data-ket></label></div><div class="grid g2 mt"><div><span class="small b">Invoice / nota</span><div data-dz1></div></div><div><span class="small b">Bukti transfer</span><div data-dz2></div></div></div><button class="btn primary block mt" data-simpan>' + ic('save') + 'Simpan realisasi</button></div>' : (p.PJEmail ? '' : '<div class="notice info mt">' + ic('info') + 'Belum ada PJ Belanja untuk pos ini.</div>'));
+    const files = { inv: null, tf: null };
+    if (b.querySelector('[data-dz1]')) {
+      dropzone(b.querySelector('[data-dz1]'), { label: 'Unggah invoice', hint: 'Foto / PDF', onFile: (f, prev) => { files.inv = f; prev.innerHTML = '<span class="pill ok">' + esc(f.name) + '</span>'; } });
+      dropzone(b.querySelector('[data-dz2]'), { label: 'Unggah bukti TF', hint: 'Foto / PDF', onFile: (f, prev) => { files.tf = f; prev.innerHTML = '<span class="pill ok">' + esc(f.name) + '</span>'; } });
+    }
+    const m = drawer({ title: 'Pos RAB', size: 'wide', body: b, buttons: sa ? [{ label: 'Hapus pos', cls: 'danger', onClick: async () => { if (!(await konfirmasi('Hapus pos ini?', { bahaya: true }))) return false; const r = await API.write('keu.deletePos', { PosID: p.PosID }); if (r.success) muat(true); else return false; } }, { label: 'Ubah pos', icon: 'edit', onClick: () => { formPos(p); } }] : [{ label: 'Tutup' }] });
+    b.addEventListener('click', async (e) => {
+      const l = e.target.closest('[data-lihat]'); if (l) return lihat(l.dataset.lihat);
+      if (e.target.closest('[data-setpj]')) { const r = await API.write('keu.setPJ', { PosID: p.PosID, PJEmail: b.querySelector('[data-pj]').value }); if (r.success) { m.close(); muat(true); } }
+      const bt = e.target.closest('[data-batal]'); if (bt && await konfirmasi('Batalkan realisasi ini?', { bahaya: true })) { await API.write('keu.deleteRealisasi', { RealisasiID: bt.dataset.batal }); m.close(); muat(true); }
+      if (e.target.closest('[data-simpan]')) {
+        const nom = Number(b.querySelector('[data-nom]').value); if (!(nom > 0)) return toast('Isi nominal.', 'warn');
+        const btn = e.target.closest('[data-simpan]'); btn.disabled = true; btn.textContent = 'Mengunggah berkas…';
+        const InvoiceID = files.inv ? await unggah(files.inv, 'invoice') : '', BuktiTFID = files.tf ? await unggah(files.tf, 'bukti') : '';
+        const r = await API.write('keu.saveRealisasi', { PosID: p.PosID, Tanggal: b.querySelector('[data-tg]').value, Nominal: nom, Vendor: b.querySelector('[data-ven]').value, Keterangan: b.querySelector('[data-ket]').value, InvoiceID, BuktiTFID });
+        btn.disabled = false; if (r.success) { m.close(); muat(true); }
+      }
+    });
+  }
+  async function lihat(id) { const m = modal({ title: 'Berkas', size: 'wide', body: UI.skeleton(3) }); const u = await driveImg(id); m.body.innerHTML = u ? (u.indexOf('data:application/pdf') === 0 ? '<iframe src="' + u + '" style="width:100%;height:70vh;border:0"></iframe>' : '<img src="' + u + '" style="width:100%">') : kosong('Tidak bisa menampilkan berkas', '', 'broken_image'); }
+  function formPos(p) {
+    const F = [{ k: 'Kelompok', label: 'Kelompok' }, { k: 'Item', label: 'Item', req: true }, { k: 'Qty', label: 'Qty', type: 'number' }, { k: 'Pcs', label: 'Pcs', type: 'number' }, { k: 'Harga', label: 'Harga satuan', type: 'number' }, { k: 'SumberPcs', label: 'Pcs otomatis', type: 'select', opts: [['', 'Manual'], ['WISUDAWAN', '= jumlah wisudawan']] }, { k: 'Keterangan', label: 'Keterangan', full: true }];
+    const b = document.createElement('div'); b.innerHTML = formHtml(F, p || { Qty: 1, Pcs: 1 });
+    modal({ title: p ? 'Ubah Pos RAB' : 'Pos RAB Baru', size: 'wide', body: b, buttons: [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', onClick: async () => { if (!formCek(b, F)) return false; const v = formVal(b, F); if (p) v.PosID = p.PosID; const r = await API.write('keu.savePos', v); if (!r.success) return false; muat(true); } }] });
+  }
+  function formMasuk() {
+    const wis = [['', '— umum —']];
+    const F = [{ k: 'Tanggal', label: 'Tanggal', type: 'date', def: new Date().toISOString().slice(0, 10) }, { k: 'Nominal', label: 'Nominal', type: 'number', req: true }, { k: 'Sumber', label: 'Sumber', ph: 'Biaya wisuda / donasi / yayasan' }, { k: 'Keterangan', label: 'Keterangan', full: true }];
+    const b = document.createElement('div'); b.innerHTML = formHtml(F) + '<div class="mt" data-dz></div>'; let file = null;
+    dropzone(b.querySelector('[data-dz]'), { label: 'Bukti (opsional)', onFile: (f, prev) => { file = f; prev.innerHTML = '<span class="pill ok">' + esc(f.name) + '</span>'; } });
+    modal({ title: 'Catat Pemasukan', body: b, buttons: [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', onClick: async () => { if (!formCek(b, F)) return false; const v = formVal(b, F); if (file) v.BuktiID = await unggah(file, 'bukti'); const r = await API.write('data.save', { tabel: 'Pemasukan', row: v }); if (!r.success) return false; muat(true); } }] });
+  }
+  body.addEventListener('click', (e) => {
+    const l = e.target.closest('[data-lihat]'); if (l) return lihat(l.dataset.lihat);
+    if (e.target.closest('[data-addmasuk]')) return formMasuk();
+    const tr = e.target.closest('tr[data-id]'); if (tr) drawerPos(D.pos.find((p) => p.PosID === tr.dataset.id));
+  });
+  view.querySelectorAll('[data-t]').forEach((b) => b.onclick = () => { tab = b.dataset.t; view.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('on', x === b)); render(); });
+  const ap = view.querySelector('[data-addpos]'); if (ap) ap.onclick = () => formPos(null);
+  view.querySelector('[data-xls]').onclick = () => D && eksporXLSX({ RAB: D.pos.map((p) => ({ Kelompok: p.Kelompok, Item: p.Item, Qty: p.Qty, Pcs: p.PcsEfektif, Harga: p.Harga, Anggaran: p.Nominal, Realisasi: p.Terpakai, Sisa: p.Sisa, PJ: p.PJNama, Status: p.Status })), Realisasi: D.realisasi.map((x) => ({ Tanggal: x.Tanggal, Pos: (D.pos.find((p) => p.PosID === x.PosID) || {}).Item, Vendor: x.Vendor, Nominal: x.Nominal, Keterangan: x.Keterangan, Oleh: x.OlehNama, Status: x.Status })), Pemasukan: D.pemasukan }, 'Keuangan-Wisuda');
+  const muat = (fresh) => SWR.load('keu.get', {}, (d, c, err) => { if (err) { top.innerHTML = '<div class="card">' + kosong('Tidak dapat memuat', esc(err.message), 'lock') + '</div>'; return; } D = d; render(); }, { maxAge: 15000, fresh });
+  await muat();
+});
