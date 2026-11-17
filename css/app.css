@@ -156,6 +156,16 @@ h3 { font-size: 15px; margin: 0; font-weight: 600; }
 .tabs button.on { background: var(--ink); color: #fff; }
 .tabs button .n { background: var(--cream-2); color: var(--ink); border-radius: 99px; padding: 0 6px; font-size: 11px; }
 
+/* v1.1 — submenu/kategori ≥3 pilihan tampil sebagai dropdown (ui.js dropdownkan) */
+.dd-src { display: none !important; }
+.tbl tr.pending { opacity: .55; pointer-events: none; transition: opacity .2s; }
+.dd { position: relative; display: inline-flex; align-items: center; max-width: 100%; min-width: 230px; vertical-align: middle; }
+.dd.mb { margin-bottom: 16px; } .dd.mt { margin-top: 16px; } .dd.full { display: flex; width: 100%; }
+.dd > .ms { position: absolute; left: 14px; font-size: 19px; pointer-events: none; color: var(--ink); }
+.dd::after { content: 'expand_more'; font-family: 'Material Symbols Outlined'; position: absolute; right: 12px; font-size: 22px; line-height: 1; pointer-events: none; color: var(--ink); }
+.dd .ddsel { -webkit-appearance: none; appearance: none; width: 100%; height: 40px; border: 1.5px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); padding: 0 40px 0 42px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-overflow: ellipsis; }
+.dd .ddsel:focus { outline: 2px solid var(--coral); outline-offset: 2px; }
+
 /* ------------------------------------------------------------------ FORMS */
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field > span, .lbl2 { font-size: 13px; font-weight: 500; }
@@ -404,6 +414,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .g-2-1, .g-1-2 { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 767px) {
+  .dd { display: flex; width: 100%; min-width: 0; }
+  .g-hp1 { grid-template-columns: minmax(0, 1fr) !important; }
+  .paper { font-size: 13.5px; overflow-x: auto; }
+  .tbl td.c1 { min-width: 170px; }
+  :not(td) > .pill { white-space: normal; max-width: 100%; }
+  .modes { width: 100%; padding: 3px 3px 3px 12px; gap: 2px; font-size: 0; }
+  .modes::before { content: 'MODE'; font-size: 10.5px; letter-spacing: .08em; margin-right: auto; }
+  .modes button { font-size: 12.5px; padding: 6px 10px; white-space: nowrap; }
+  .paper table { font-size: 11.5px; }
   body { background: var(--canvas); font-size: 14.5px; }
   .shell { padding: 0; display: block; }
   .side { display: none; }

@@ -1,4 +1,4 @@
-/* Master Data — Wisudawan, Tamu, Panitia, Divisi, Prodi, Susunan Senat, Pejabat TTD, Daftar Acara, Pengguna.
+/* Master Data — Wisudawan, Tamu, Panitia, Divisi, Prodi, Susunan Senat, Pejabat TTD, Daftar Acara, Kelompok RAB, Pengguna.
    Impor Excel (worksheet lama otomatis / templat), ekspor, token QR, foto, cetak Daftar Tamu Kehormatan. */
 App.page('master', async function (view, params) {
   const { esc, API, SWR, Sesi, modal, drawer, konfirmasi, toast, lib, eksporXLSX, kompresGambar, driveImg, angka } = SW;
@@ -56,6 +56,9 @@ App.page('master', async function (view, params) {
       cols: [{ k: 'Peran', label: 'Peran', render: (r) => pill(r.Peran, 'yellow') }, { k: 'Nama', label: 'Nama', render: (r) => '<b>' + esc(r.Nama || '— belum diisi —') + '</b>' }, { k: 'Jabatan', label: 'Jabatan' }] },
     DaftarAcara: { label: 'Daftar Acara Baku', icon: 'list_alt', key: 'AcaraID', F: () => [{ k: 'Nama', label: 'Nama acara', req: true }, { k: 'NamaArab', label: 'Nama (Arab)', ar: true }, { k: 'Jenis', label: 'Jenis', type: 'select', opts: ['', 'PROSESI', 'SAMBUTAN', 'PENAMPILAN', 'VIDEO', 'HIMBAUAN', 'PEMBUKAAN', 'PENUTUPAN'] }, { k: 'Durasi', label: 'Durasi (menit)', type: 'number' }, { k: 'KodeInstrumen', label: 'Kode instrumen' }, { k: 'Urutan', label: 'Urutan', type: 'number' }],
       cols: [{ k: 'Urutan', label: 'No', cls: 'num' }, { k: 'Nama', label: 'Acara', render: (r) => '<b>' + esc(r.Nama) + '</b>' }, { k: 'Jenis', label: 'Jenis', render: (r) => r.Jenis ? pill(r.Jenis, 'mute') : '' }, { k: 'Durasi', label: 'Menit' }, { k: 'KodeInstrumen', label: 'Kode' }] },
+    KelompokRAB: { label: 'Kelompok RAB', icon: 'category', key: 'KelompokID', only: ['SUPERADMIN', 'KOORDINATOR', 'PEGAWAI'], ph: 'Cari kelompok…',
+      F: () => [{ k: 'Nama', label: 'Nama kelompok RAB', req: true, help: 'Muncul sebagai pilihan dropdown di Pos RAB & berkas Excel RAB. Ganti nama = semua pos ikut berganti.' }, { k: 'Urutan', label: 'Urutan', type: 'number' }, { k: 'Keterangan', label: 'Keterangan', type: 'textarea', rows: 2 }],
+      cols: [{ k: 'Urutan', label: 'No', cls: 'num' }, { k: 'Nama', label: 'Kelompok RAB', render: (r) => '<b>' + esc(r.Nama) + '</b>' }, { k: 'Keterangan', label: 'Keterangan' }], search: ['Nama', 'Keterangan'] },
     Pengguna: { label: 'Superadmin', icon: 'admin_panel_settings', key: 'PenggunaID', only: ['SUPERADMIN'], F: () => [{ k: 'Email', label: 'Email Google', type: 'email', req: true }, { k: 'Nama', label: 'Nama' }, { k: 'NoWA', label: 'No. WhatsApp' }, { k: 'Status', label: 'Status', type: 'select', opts: ['Aktif', 'Nonaktif'] }],
       cols: [{ k: 'Email', label: 'Email', render: (r) => '<b>' + esc(r.Email) + '</b>' }, { k: 'Nama', label: 'Nama' }, { k: 'Status', label: 'Status', render: (r) => pill(r.Status) }] }
   };
@@ -68,7 +71,7 @@ App.page('master', async function (view, params) {
   function mount() {
     view.querySelectorAll('[data-t]').forEach((b) => b.classList.toggle('on', b.dataset.t === cur));
     const D = T[cur];
-    tbl = table(host, { key: D.key, cols: D.cols, ph: D.ph, searchKeys: D.search, filters: D.filters, filterFn: D.ff, pageSize: 30, emptyTitle: 'Belum ada data ' + (D.label || cur), emptyText: tulis ? 'Tambah manual atau impor dari Excel.' : '', emptyIcon: D.icon,
+    tbl = table(host, { key: D.key, rowCls: (r) => r._pending ? 'pending' : '', cols: D.cols, ph: D.ph, searchKeys: D.search, filters: D.filters, filterFn: D.ff, pageSize: 30, emptyTitle: 'Belum ada data ' + (D.label || cur), emptyText: tulis ? 'Tambah manual atau impor dari Excel.' : '', emptyIcon: D.icon,
       tools: (cur === 'Tamu' ? '<button class="btn sm" data-kehormatan>' + ic('print') + 'Daftar Tamu Kehormatan</button>' : '') + (cur === 'Wisudawan' || cur === 'Tamu' || cur === 'Panitia' ? (tulis ? '<button class="btn sm" data-token>' + ic('qr_code_2') + 'Token QR</button>' : '') : ''),
       actions: (r) => (cur === 'Wisudawan' && (tulis || Sesi.flag('PANITIA_FOTO')) ? '<button class="btn xs" data-act="foto" title="Foto">' + ic('photo_camera') + '</button>' : '') + (r.Token && (cur === 'Wisudawan' || cur === 'Tamu') ? '<button class="btn xs" data-act="qr" title="QR & tautan undangan">' + ic('qr_code') + '</button>' : '') + '<button class="btn xs" data-act="edit">' + ic(tulis ? 'edit' : 'visibility') + '</button>' + (tulis ? '<button class="btn xs" data-act="hapus">' + ic('delete') + '</button>' : ''),
       onAction: aksi });
@@ -78,22 +81,29 @@ App.page('master', async function (view, params) {
     muat();
   }
   const muat = (fresh) => SWR.load('data.list', { tabel: cur }, (d, c, err) => { if (err) return toast(err.message, 'err'); rows = d || []; tbl.set(rows); }, { maxAge: 15000, fresh });
-  function form(r) {
+  function form(r, isian) {
     const D = T[cur], F = D.F(), baru = !r, body = document.createElement('div');
-    body.innerHTML = formHtml(F, r || {}) + (cur === 'Panitia' && baru ? '<label class="check mt"><input type="checkbox" data-kirim> Kirim info akun lewat WA/email (bila notifikasi aktif)</label>' : '');
+    body.innerHTML = formHtml(F, Object.assign({}, r || {}, isian || {})) + (cur === 'Panitia' && baru ? '<label class="check mt"><input type="checkbox" data-kirim> Kirim info akun lewat WA/email (bila notifikasi aktif)</label>' : '');
     if (!tulis) body.querySelectorAll('input,select,textarea').forEach((x) => x.disabled = true);
     drawer({ title: (baru ? 'Tambah ' : tulis ? 'Ubah ' : 'Detail ') + (D.label || cur), size: 'wide', body, buttons: tulis ? [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', icon: 'save', onClick: async () => {
       if (!formCek(body, F)) return false;
       const row = formVal(body, F); if (r) row[D.key] = r[D.key];
       const k = body.querySelector('[data-kirim]');
-      const res = await API.write('data.save', { tabel: cur, row, kirimAkun: k ? k.checked : false });
-      if (!res.success) return false;
-      muat(true); if (cur === 'Divisi' || cur === 'Prodi') App.segarkanBoot();
+      // v1.1 — UI optimis: laci langsung tertutup & baris langsung tampil (redup) sambil server menyimpan.
+      // Gagal → baris dikembalikan, laci dibuka lagi berisi isian tadi + pesan galat.
+      const tabel = cur, lama = rows, sementara = Object.assign({}, r || {}, row, { _pending: true });
+      if (!r) sementara[D.key] = 'baru-' + SW.uid();
+      rows = r ? rows.map((x) => x[D.key] === r[D.key] ? sementara : x) : [sementara].concat(rows); tbl.set(rows);
+      API.write('data.save', { tabel, row, kirimAkun: k ? k.checked : false }).then((res) => {
+        if (tabel !== cur) return;
+        if (!res.success) { rows = lama; tbl.set(rows); form(r, row); return; }
+        muat(true); if (tabel === 'Divisi' || tabel === 'Prodi') App.segarkanBoot();
+      });
     } }] : [{ label: 'Tutup' }] });
   }
   async function aksi(a, r) {
     if (a === 'edit') return form(r);
-    if (a === 'hapus') { if (await konfirmasi('Hapus <b>' + esc(r.Nama || r.Email || r[T[cur].key]) + '</b>? Tindakan ini tidak bisa dibatalkan.', { ya: 'Hapus', bahaya: true })) { const x = await API.write('data.delete', { tabel: cur, ids: [r[T[cur].key]] }); if (x.success) muat(true); } }
+    if (a === 'hapus') { if (await konfirmasi('Hapus <b>' + esc(r.Nama || r.Email || r[T[cur].key]) + '</b>? Tindakan ini tidak bisa dibatalkan.', { ya: 'Hapus', bahaya: true })) { const tabel = cur, lama = rows; rows = rows.filter((x) => x !== r); tbl.set(rows); const x = await API.write('data.delete', { tabel, ids: [r[T[tabel].key]] }); if (tabel !== cur) return; if (x.success) muat(true); else { rows = lama; tbl.set(rows); } } }
     if (a === 'qr') return tampilQR(r);
     if (a === 'foto') return fotoWisudawan(r);
   }

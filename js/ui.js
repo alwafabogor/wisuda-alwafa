@@ -56,6 +56,9 @@
 
   /* ------------------------------------------------------------ TABEL (cari, saring, halaman) */
   function table(el, o) {
+    // Tabel bisa dipasang ulang di elemen yang sama (mis. ganti tab) → lepas pendengar lama agar klik tidak berlipat
+    if (el._tblAc) el._tblAc.abort();
+    const ac = new AbortController(); el._tblAc = ac; const sig = { signal: ac.signal };
     const st = { rows: [], q: '', page: 1, filter: o.filterDefault || '', sel: new Set() };
     const per = o.pageSize || 25;
     el.innerHTML = '<div class="card pad0"><div class="row" style="padding:14px;gap:10px">' +
@@ -76,7 +79,7 @@
       tb.innerHTML = vis.length ? vis.map((r) => {
         const id = r[o.key || 'id'];
         return '<tr data-id="' + esc(id) + '" class="' + (o.rowCls ? o.rowCls(r) : '') + '">' + (o.select ? '<td><input type="checkbox" data-sel="' + esc(id) + '"' + (st.sel.has(String(id)) ? ' checked' : '') + '></td>' : '') +
-          o.cols.map((c) => '<td class="' + (c.cls || '') + '">' + (c.render ? c.render(r) : esc(r[c.k])) + '</td>').join('') +
+          o.cols.map((c, i) => '<td class="' + (c.cls || '') + (i ? '' : ' c1') + '">' + (c.render ? c.render(r) : esc(r[c.k])) + '</td>').join('') +
           (o.actions ? '<td class="act">' + o.actions(r) + '</td>' : '') + '</tr>';
       }).join('') : '<tr><td colspan="' + (o.cols.length + (o.actions ? 1 : 0) + (o.select ? 1 : 0)) + '">' + kosong(o.emptyTitle || 'Belum ada data', o.emptyText || '', o.emptyIcon || 'inbox', o.emptyAction || '') + '</td></tr>';
       pg.innerHTML = '<span>' + angka(rows.length) + ' data' + (st.sel.size ? ' · <b>' + st.sel.size + ' dipilih</b>' : '') + '</span>' + (pages > 1 ? '<span class="row" style="gap:4px"><button class="btn xs" data-p="-1"' + (st.page < 2 ? ' disabled' : '') + '>‹</button><span>' + st.page + ' / ' + pages + '</span><button class="btn xs" data-p="1"' + (st.page >= pages ? ' disabled' : '') + '>›</button></span>' : '');
@@ -87,10 +90,11 @@
     if (fb) { const sync = () => $$('button', fb).forEach((b) => b.classList.toggle('on', b.dataset.v === st.filter)); sync(); fb.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; st.filter = b.dataset.v; st.page = 1; sync(); render(); }); }
     pg.addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; st.page += Number(b.dataset.p); render(); });
     el.addEventListener('change', (e) => {
+      if (e.target.matches('[data-f-dd]')) return;
       if (e.target.matches('[data-sel]')) { e.target.checked ? st.sel.add(e.target.dataset.sel) : st.sel.delete(e.target.dataset.sel); render(); if (o.onSelect) o.onSelect([...st.sel]); }
       if (e.target.matches('[data-all]')) { const ids = st.rows.filter(lolos).map((r) => String(r[o.key || 'id'])); ids.forEach((id) => e.target.checked ? st.sel.add(id) : st.sel.delete(id)); render(); if (o.onSelect) o.onSelect([...st.sel]); }
-    });
-    if (o.onAction) el.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || !el.contains(b)) return; const tr = b.closest('tr'); const id = tr ? tr.dataset.id : b.dataset.id; const r = st.rows.find((x) => String(x[o.key || 'id']) === String(id)); o.onAction(b.dataset.act, r, b); });
+    }, sig);
+    if (o.onAction) el.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || !el.contains(b)) return; const tr = b.closest('tr'); const id = tr ? tr.dataset.id : b.dataset.id; const r = st.rows.find((x) => String(x[o.key || 'id']) === String(id)); o.onAction(b.dataset.act, r, b); }, sig);
     return { set(rows) { st.rows = rows || []; render(); }, rows: () => st.rows, selected: () => [...st.sel], clearSel() { st.sel.clear(); render(); }, tools: $('[data-tools]', el), render };
   }
 
@@ -170,5 +174,50 @@
     dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('over'); pilih(e.dataTransfer.files); });
   }
 
-  W.UI = { PAL, ic, pill, kosong, skeleton, avatar, formHtml, formVal, formCek, table, area, hbars, columns, donut, dropzone, STATUS };
+
+  /* ------------------------------------------------------------ dropdown pengganti submenu/kategori (v1.1)
+     Grup tombol pilihan (.tabs, .seg, .chipset[data-f], [data-dd]) berisi ≥3 tombol ditampilkan sebagai satu
+     dropdown agar tidak menumpuk. Tombol aslinya tetap ada (disembunyikan) — memilih di dropdown = mengklik
+     tombolnya, jadi logika halaman tidak berubah. Grup 2 pilihan & [data-nodd] tetap tombol. */
+  const DD_SEL = '.tabs, .seg, .chipset[data-f], [data-dd]';
+  const ddTombol = (g) => Array.prototype.filter.call(g.children, (b) => b.tagName === 'BUTTON');
+  const ddLabel = (b) => { const c = b.cloneNode(true); c.querySelectorAll('.ms').forEach((x) => x.remove()); return c.textContent.replace(/\s+/g, ' ').trim() || b.title || b.dataset.v || '-'; };
+  const ddAktif = (b) => b.classList.contains('on') || b.getAttribute('aria-selected') === 'true' || b.getAttribute('aria-pressed') === 'true';
+  function ddSatu(g) {
+    if (g.hasAttribute('data-nodd') || g.closest('[data-nodd]')) return;
+    const btn = ddTombol(g);
+    if (btn.length < 3) { if (g._dd) { g._dd.remove(); g._dd = null; g.classList.remove('dd-src'); } return; }
+    let dd = g._dd;
+    if (!dd || dd.parentNode !== g.parentNode || dd.nextElementSibling !== g) {
+      if (dd) dd.remove();
+      dd = document.createElement('div'); dd.className = 'dd' + (/\bmt\b/.test(g.className) ? ' mt' : '') + (/\bmb\b/.test(g.className) || g.classList.contains('tabs') ? ' mb' : '') + (/width:\s*100%/.test(g.getAttribute('style') || '') ? ' full' : '');
+      dd.setAttribute('data-ddx', '');
+      dd.innerHTML = '<span class="ms" aria-hidden="true">tune</span><select class="ddsel" aria-label="' + esc(g.getAttribute('aria-label') || 'Pilih tampilan') + '"></select>';
+      dd._src = g; g._dd = dd; dd._sig = '';
+      dd.querySelector('select').addEventListener('change', (e) => { const b = ddTombol(g)[e.target.selectedIndex]; if (b && !b.disabled) b.click(); ddSatu(g); });
+      g.parentNode.insertBefore(dd, g);
+    }
+    g.classList.add('dd-src');
+    const sel = dd.querySelector('select'), sig = btn.map((b) => ddLabel(b) + (b.disabled ? '#' : '')).join('\n');
+    if (dd._sig !== sig) { sel.innerHTML = btn.map((b) => '<option' + (b.disabled ? ' disabled' : '') + '>' + esc(ddLabel(b)) + '</option>').join(''); dd._sig = sig; }
+    const i = btn.findIndex(ddAktif), on = btn[i >= 0 ? i : 0];
+    if (sel.selectedIndex !== (i >= 0 ? i : 0)) sel.selectedIndex = i >= 0 ? i : 0;
+    const ikon = on && on.querySelector('.ms'), ims = dd.querySelector('.ms'), nm = ikon ? ikon.textContent.trim() : (g.classList.contains('tabs') ? 'segment' : 'filter_list');
+    if (ims.textContent !== nm) ims.textContent = nm;
+  }
+  function dropdownkan(root) {
+    (root || document).querySelectorAll(DD_SEL).forEach(ddSatu);
+    document.querySelectorAll('[data-ddx]').forEach((dd) => { if (!dd._src || !dd._src.isConnected) dd.remove(); });
+  }
+  let _ddT = 0;
+  function pantauDropdown(root) {
+    const jalan = () => { _ddT = 0; dropdownkan(root); };
+    new MutationObserver((ms) => {
+      if (_ddT) return;
+      for (const m of ms) { const t = m.target; if (t.nodeType === 1 && (m.type === 'childList' || t.tagName === 'BUTTON') && !(t.closest && t.closest('[data-ddx]'))) { _ddT = requestAnimationFrame(jalan); return; } }
+    }).observe(root || document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] });
+    jalan();
+  }
+
+  W.UI = { PAL, ic, pill, kosong, skeleton, avatar, formHtml, formVal, formCek, table, area, hbars, columns, donut, dropzone, STATUS, dropdownkan, pantauDropdown };
 })(window);

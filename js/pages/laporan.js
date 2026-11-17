@@ -95,10 +95,9 @@ App.page('laporan', async function (view, params) {
   async function lpj(fresh) {
     aksi.innerHTML = '';
     body.innerHTML = UI.skeleton(12);
-    const r = await API.read('lpj.data', formId ? { FormID: formId } : {}, fresh ? { fresh: true } : undefined);
+    const [r, forms] = await Promise.all([SW.SWR.get('lpj.data', formId ? { FormID: formId } : {}, { fresh: !!fresh, maxAge: 120000 }), SW.SWR.get('kuis.list', {}, { maxAge: 60000 })]);
     if (!r.success) { body.innerHTML = '<div class="card">' + kosong('Gagal memuat LPJ', esc(r.message), 'error') + '</div>'; return; }
     L = r.data;
-    const forms = await API.read('kuis.list', {});
     const daftarForm = forms.success ? (forms.data || []).filter((f) => f.Status !== 'Draft') : [];
     aksi.innerHTML = (daftarForm.length > 1 ? '<select class="inp sm" data-form style="max-width:220px">' + daftarForm.map((f) => '<option value="' + f.FormID + '"' + (L.kuis && L.kuis.form.FormID === f.FormID ? ' selected' : '') + '>Kuis: ' + esc(f.Judul) + '</option>').join('') + '</select>' : '') +
       '<button class="btn sm" data-ref>' + ic('refresh') + 'Segarkan</button><button class="btn sm" data-print>' + ic('print') + 'Cetak / PDF</button><button class="btn sm primary" data-docx>' + ic('description') + 'Unduh DOCX</button>';
@@ -166,7 +165,7 @@ App.page('laporan', async function (view, params) {
   /* ============================================================ EVALUASI FEEDBACK */
   async function evaluasi() {
     aksi.innerHTML = ''; body.innerHTML = UI.skeleton(8);
-    const fl = await API.read('kuis.list', {});
+    const fl = await SW.SWR.get('kuis.list', {}, { maxAge: 60000 });
     const forms = fl.success ? (fl.data || []) : [];
     if (!forms.length) { body.innerHTML = '<div class="card">' + kosong('Belum ada kuisioner', 'Buat formulir evaluasi di menu Kuisioner.', 'quiz', '<a class="btn primary" href="#/kuisioner">Buka Kuisioner</a>') + '</div>'; return; }
     if (!formId || !forms.some((f) => f.FormID === formId)) formId = (forms.find((f) => f.Status !== 'Draft') || forms[0]).FormID;

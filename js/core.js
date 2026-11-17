@@ -6,7 +6,7 @@
 (function (W) {
   'use strict';
   const CFG = W.APP_CONFIG || {};
-  const VERSI = '1.0.0';
+  const VERSI = '1.1.0';
 
   /* ------------------------------------------------------------ util */
   const $ = (s, el) => (el || document).querySelector(s);
@@ -83,19 +83,29 @@
       opt = opt || {};
       const key = _epoch + '|' + action + '|' + Sesi.kid + '|' + JSON.stringify(data || {});
       if (_inflight[key]) return _inflight[key];
-      const p = (opt.noBatch ? kirim({ action, data: data || {}, token: Sesi.token, kid: Sesi.kid }, opt) : Batcher.add(action, data || {})).then((r) => tangani(r, action));
+      const p = (opt.noBatch ? kirim({ action, data: data || {}, token: Sesi.token, kid: Sesi.kid }, opt) : Batcher.add(action, data || {}, !!opt.silent)).then((r) => tangani(r, action));
       _inflight[key] = p; p.finally(() => delete _inflight[key]);
       return p;
     },
-    /** Aksi tulis: reqId untuk idempotensi (aman diulang saat jaringan putus). */
+    /**
+     * Aksi tulis: reqId untuk idempotensi (aman diulang saat jaringan putus).
+     * after: daftar baca halaman aktif ikut dikirim → server menjalankannya di eksekusi yang sama,
+     * hasilnya langsung masuk cache sehingga muat ulang halaman tidak perlu permintaan kedua.
+     */
     async write(action, data, opt) {
       opt = opt || {}; _epoch++;
       const reqId = opt.reqId || uid();
-      let res = await kirim({ action, data: data || {}, token: Sesi.token, kid: Sesi.kid, reqId }, opt);
-      if (res.network && opt.retry !== false) { await new Promise((r) => setTimeout(r, 1200)); res = await kirim({ action, data: data || {}, token: Sesi.token, kid: Sesi.kid, reqId }, opt); }
+      const after = opt.after !== undefined ? opt.after : (opt.silent ? [] : SWR.aktif.slice(-4));
+      const body = { action, data: data || {}, token: Sesi.token, kid: Sesi.kid, reqId };
+      if (after && after.length) body.after = after.map((a) => ({ action: a.action, data: a.data }));
+      let res = await kirim(body, opt);
+      if (res.network && opt.retry !== false) { await new Promise((r) => setTimeout(r, 1200)); res = await kirim(body, opt); }
       tangani(res, action);
       if (!opt.silent && res.message) toast(res.message, res.success ? 'ok' : 'err');
-      if (res.success) SWR.stale();
+      if (res.success) {
+        SWR.stale();
+        if (Array.isArray(res.after)) res.after.forEach((r, i) => { const a = body.after[i]; if (a && r && r.success) SWR.put(a.action, a.data, r.data, true); });
+      }
       return res;
     },
     pub(action, data, opt) { return kirim({ action, data: data || {}, kid: (data && data.k) || '' }, opt); },
@@ -108,33 +118,56 @@
   /* Penggabung batch otomatis: semua API.read di tik yang sama → 1 eksekusi server */
   const Batcher = {
     q: null,
-    add(action, data) { return new Promise((res) => { if (!this.q) { this.q = []; setTimeout(() => this.flush(), 0); } this.q.push({ action, data, res }); }); },
+    add(action, data, silent) { return new Promise((res) => { if (!this.q) { this.q = []; setTimeout(() => this.flush(), 0); } this.q.push({ action, data, res, silent }); }); },
     async flush() {
       const q = this.q; this.q = null; if (!q || !q.length) return;
-      for (let i = 0; i < q.length; i += 10) {
-        const part = q.slice(i, i + 10);
-        if (part.length === 1) { const p = part[0]; p.res(await kirim({ action: p.action, data: p.data, token: Sesi.token, kid: Sesi.kid })); continue; }
-        const r = await kirim({ action: 'batch', data: { calls: part.map((p) => ({ action: p.action, data: p.data })) }, token: Sesi.token, kid: Sesi.kid });
+      const kelompok = []; for (let i = 0; i < q.length; i += 10) kelompok.push(q.slice(i, i + 10));
+      await Promise.all(kelompok.map(async (part) => {      // kelompok dikirim bersamaan (paralel)
+        const diam = { silent: part.every((p) => p.silent) };
+        if (part.length === 1) { const p = part[0]; p.res(await kirim({ action: p.action, data: p.data, token: Sesi.token, kid: Sesi.kid }, diam)); return; }
+        const r = await kirim({ action: 'batch', data: { calls: part.map((p) => ({ action: p.action, data: p.data })) }, token: Sesi.token, kid: Sesi.kid }, diam);
         if (r.success && Array.isArray(r.data)) part.forEach((p, j) => p.res(r.data[j] || { success: false, message: 'Tidak ada respons' }));
         else part.forEach((p) => p.res(r));
-      }
+      }));
     }
   };
   /* Cache stale-while-revalidate di localStorage */
   const SWR = {
     _stale: 0,
+    aktif: [],          // baca utama halaman yang sedang dibuka (dikirim sebagai 'after' saat menulis)
     key(action, data) { return 'swr:' + (Sesi.kid || '-') + ':' + (Sesi.me ? Sesi.me.role : '') + ':' + action + ':' + JSON.stringify(data || {}); },
     stale() { this._stale = Date.now(); },
+    catat(action, data) {
+      if (/^(notif|wa|crm|log|sistem|email|scan\.(cari|do|index)|live\.state|pengumuman\.inbox|file\.)/.test(action)) return;
+      const j = JSON.stringify(data || {}); this.aktif = this.aktif.filter((a) => !(a.action === action && JSON.stringify(a.data) === j)); this.aktif.push({ action, data: data || {} });
+      if (this.aktif.length > 4) this.aktif.shift();
+    },
+    /** Simpan hasil baca ke cache (dipakai 'after' dari aksi tulis). */
+    put(action, data, d, dariTulis) { Store.set(this.key(action, data), { t: Date.now() + 1, h: hash(JSON.stringify(d)), d, w: dariTulis ? 1 : 0 }); },
+    /** Seperti API.read, tetapi memakai cache lokal bila masih segar (untuk halaman yang merender sekali). */
+    async get(action, data, opt) {
+      opt = opt || {}; this.catat(action, data);
+      const k = this.key(action, data), c = Store.get(k, null), umur = opt.maxAge == null ? 60000 : opt.maxAge;
+      if (c && c.d !== undefined && (!opt.fresh || (c.w && Date.now() - c.t < 8000)) && c.t >= this._stale && Date.now() - c.t < umur) return { success: true, data: c.d, cached: true };
+      const r = await API.read(action, opt.fresh ? Object.assign({}, data, { _fresh: true }) : data, opt);
+      if (r.success) this.put(action, data, r.data);
+      return r;
+    },
+    /** Isi cache di latar (prefetch) — tanpa render. */
+    prefetch(list) { (list || []).forEach((x) => { const c = Store.get(this.key(x[0], x[1]), null); if (!c || c.t < this._stale || Date.now() - c.t > (x[2] || 60000)) this.load(x[0], x[1], () => { }, { maxAge: x[2] || 60000, diam: true }); }); },
     /** Render dari cache dulu, lalu ambil segar bila cache lebih tua dari maxAge (ms). cb(data, dariCache). */
     async load(action, data, cb, opt) {
       opt = opt || {};
+      if (!opt.diam) this.catat(action, data);
       const k = this.key(action, data), c = Store.get(k, null);
+      // baru saja diisi oleh hasil 'after' sebuah aksi tulis → sudah segar, tanpa permintaan kedua
+      if (opt.fresh && c && c.w && c.d !== undefined && Date.now() - c.t < 8000 && c.t >= this._stale) { cb(c.d, false); return c.d; }
       let rendered = false;
       if (c && c.d !== undefined && !opt.fresh) { cb(c.d, true); rendered = true; }
       const segar = !c || opt.fresh || c.t < this._stale || (Date.now() - c.t) > (opt.maxAge == null ? 30000 : opt.maxAge);
       if (!segar) return c.d;
-      const r = await API.read(action, opt.fresh ? Object.assign({}, data, { _fresh: true }) : data);
-      if (!r.success) { if (!rendered) cb(null, false, r); else if (r.code !== 401) toast(r.message, 'err'); return null; }
+      const r = await API.read(action, opt.fresh ? Object.assign({}, data, { _fresh: true }) : data, opt.diam ? { silent: true } : undefined);
+      if (!r.success) { if (opt.diam) return null; if (!rendered) cb(null, false, r); else if (r.code !== 401) toast(r.message, 'err'); return null; }
       const h = hash(JSON.stringify(r.data));
       if (!rendered || !c || c.h !== h) cb(r.data, false);
       Store.set(k, { t: Date.now(), h, d: r.data });
@@ -201,6 +234,7 @@
   /* ------------------------------------------------------------ pemuat pustaka (dimuat saat dibutuhkan saja) */
   const LIBS = {
     xlsx: ['https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', () => W.XLSX],
+    exceljs: ['https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js', () => W.ExcelJS],   // Excel dengan dropdown (validasi data)
     jspdf: ['https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => W.jspdf],
     pptx: ['https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js', () => W.PptxGenJS],
     qr: ['https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js', () => W.qrcode],

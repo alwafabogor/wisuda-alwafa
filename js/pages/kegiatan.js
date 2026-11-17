@@ -55,5 +55,5 @@ App.page('kegiatan', async function (view) {
     if (b.dataset.a === 'arsip' && await konfirmasi('Arsipkan <b>' + esc(k.Nama) + '</b>?<br>Data tetap tersimpan (hanya baca) dan tidak lagi tampil di dashboard.', { ya: 'Arsipkan', bahaya: true })) { await API.write('kegiatan.archive', { KegiatanID: k.KegiatanID }); if (k.KegiatanID === Sesi.kid) Sesi.setKid(''); await App.segarkanBoot(); muat(true); }
     if (b.dataset.a === 'unarsip') { await API.write('kegiatan.unarchive', { KegiatanID: k.KegiatanID }); muat(true); App.segarkanBoot(); }
   });
-  await muat(true);
+  await muat();
 });

@@ -12,6 +12,7 @@
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', roles: [SA, KU, KD, PG, AC], modul: 'inti', grp: 'Utama' },
     { id: 'kegiatan', label: 'Kegiatan & Arsip', icon: 'folder_shared', roles: [SA], modul: 'inti' },
     { id: 'master', label: 'Master Data', icon: 'database', roles: [SA, KU, KD, PG], modul: 'master' },
+    { id: 'rekrutmen', label: 'Rekrutmen Panitia', icon: 'how_to_reg', roles: [SA, KU], modul: 'master' },
     { id: 'rundown', label: 'Rundown', icon: 'event_note', roles: ALL, modul: 'rundown', grp: 'Acara' },
     { id: 'live', label: 'Rundown Live', icon: 'sensors', roles: ALL, modul: 'rundown' },
     { id: 'mc', label: 'Teks MC', icon: 'record_voice_over', roles: [SA, KU, MC], modul: 'mc' },
@@ -139,6 +140,7 @@
 
     /* -------------------------------------------------- KERANGKA */
     shell() {
+      if (!this._dd) { this._dd = 1; W.UI.pantauDropdown(document.body); }   // submenu/kategori ≥3 pilihan → dropdown
       if ($('.shell')) { this.renderNav(); this.renderSubbar(); this.route(); return; }
       $('#app').innerHTML = '<div class="shell"><aside class="side"><div class="brand"><div class="logo">W</div><div><b>SIM Wisuda</b><small data-singkat></small></div></div><nav class="nav" data-nav></nav>' +
         '<div class="foot nav"><a href="#" data-install class="hide">' + ic('install_mobile') + '<span>Pasang Aplikasi</span></a><a href="#" data-logout>' + ic('logout') + '<span>Keluar</span></a></div></aside>' +
@@ -153,6 +155,27 @@
       $('[data-who]').onclick = () => this.menuProfil();
       W.addEventListener('hashchange', () => this.route());
       this.renderNav(); this.renderSubbar(); this.route(); this.mulaiTimer(); this.pwa();
+    },
+    /**
+     * Prefetch (gas-scale-turbo): setelah halaman pertama tampil, modul halaman lain & data utama tiap menu
+     * dimuat diam-diam (digabung batch → 1–2 eksekusi server). Pindah menu lalu tampil seketika dari cache.
+     */
+    prefetch() {
+      clearTimeout(this._pfT);
+      this._pfT = setTimeout(() => {
+        const jalan = () => {
+          if (!Sesi.token || !this.boot || !this.boot.kegiatan) return;
+          const menu = this.menuSaya();
+          menu.forEach((m) => { if (!PAGES[m.id]) this.muatHalaman(m.id).catch(() => { }); });
+          const PF = { dashboard: [['dashboard.get', {}]], master: [['data.list', { tabel: 'Wisudawan' }]], rundown: [['rundown.get', { planId: '' }]], denah: [['denah.get', {}]],
+            checklist: [['checklist.get', {}]], keuangan: [['keu.get', {}]], pengumuman: [['pengumuman.list', {}]], urutan: [['urutan.get', {}]], mc: [['mc.render', {}]],
+            rekapscan: [['scan.report', { jenis: 'HADIR' }]], kegiatan: [['kegiatan.list', {}]], galeri: [['galeri.list', {}]], kuisioner: [['kuis.list', {}]], laporan: [['lpj.data', {}]], rekrutmen: [['rekrut.list', {}]], wa: [['notif.config', {}], ['kegiatan.variabel', {}]] };
+          const list = [];
+          menu.forEach((m) => { if (m.id !== this.cur) (PF[m.id] || []).forEach((x) => list.push(x.concat([120000]))); });
+          SWR.prefetch(list);
+        };
+        (W.requestIdleCallback || ((f) => setTimeout(f, 30)))(jalan, { timeout: 2500 });
+      }, 900);
     },
     renderNav() {
       const me = Sesi.me || {}, b = this.boot || {}, menu = this.menuSaya();
@@ -189,7 +212,7 @@
       const b = this.boot || {}, list = b.daftarKegiatan || [];
       const m = modal({ title: 'Pilih Kegiatan Master', size: 'wide', body: '<div class="col">' + (list.length ? list.map((k) => '<button class="card flat row" style="text-align:left;cursor:pointer;width:100%" data-k="' + esc(k.KegiatanID) + '"><div style="flex:1"><b>' + esc(k.Nama) + '</b><div class="small muted">' + esc([k.Angkatan && 'Angkatan ' + k.Angkatan, W.SW.tglID(k.TanggalAcara), k.Lokasi].filter(Boolean).join(' · ')) + '</div></div>' + pill(k.Status) + (k.KegiatanID === b.kid ? pill('Dipakai', 'dark') : '') + '</button>').join('') : kosong('Belum ada Kegiatan Master', 'Superadmin perlu membuat Kegiatan Master untuk angkatan wisuda.', 'event')) + '</div>',
         buttons: Sesi.is(SA) ? [{ label: 'Tutup' }, { label: 'Kelola Kegiatan', cls: 'dark', onClick: () => this.go('kegiatan') }] : [{ label: 'Tutup' }] });
-      $$('[data-k]', m.body).forEach((x) => x.onclick = async () => { m.close(); Sesi.setKid(x.dataset.k); Store.trim(); await this.segarkanBoot(); this.route(); toast('Kegiatan aktif: ' + (this.boot.kegiatan || {}).Nama, 'ok'); });
+      $$('[data-k]', m.body).forEach((x) => x.onclick = async () => { m.close(); Sesi.setKid(x.dataset.k); Store.trim(); await this.segarkanBoot(); this.route(); this.prefetch(); toast('Kegiatan aktif: ' + (this.boot.kegiatan || {}).Nama, 'ok'); });
     },
     menuMobile() {
       const menu = this.menuSaya();
@@ -223,16 +246,20 @@
       $('[data-title]').innerHTML = esc(m.label || 'SIM Wisuda');
       document.title = (m.label || 'SIM Wisuda') + ' · SIM Wisuda';
       this.stopPageTimers();
+      SWR.aktif = [];
       const lama = $('#view'), view = lama.cloneNode(false); lama.replaceWith(view);   // buang listener halaman sebelumnya
       view.innerHTML = W.UI.skeleton(6); view.scrollTop = 0;
       try {
         if (!PAGES[id]) await this.muatHalaman(id);
         if (this.cur !== id) return;
         await PAGES[id](view, params);
+        if (!this._pfAwal) { this._pfAwal = 1; this.prefetch(); }   // prefetch setelah halaman pertama selesai dimuat
       } catch (e) { console.error(e); view.innerHTML = '<div class="card">' + kosong('Halaman gagal dimuat', esc(e.message), 'error', '<button class="btn" onclick="location.reload()">Muat ulang</button>') + '</div>'; }
     },
+    _pg: {},
     muatHalaman(id) {
-      return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'js/pages/' + id + '.js?v=' + W.SW.VERSI; s.onload = res; s.onerror = () => rej(new Error('Berkas halaman ' + id + ' tidak ditemukan.')); document.head.appendChild(s); });
+      if (this._pg[id]) return this._pg[id];
+      return (this._pg[id] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'js/pages/' + id + '.js?v=' + W.SW.VERSI; s.onload = res; s.onerror = () => { delete this._pg[id]; s.remove(); rej(new Error('Berkas halaman ' + id + ' tidak ditemukan.')); }; document.head.appendChild(s); }));
     },
     /** Timer milik halaman (dibersihkan otomatis saat pindah halaman). */
     every(ms, fn) { const t = setInterval(fn, ms); this._timers.push(t); return t; },

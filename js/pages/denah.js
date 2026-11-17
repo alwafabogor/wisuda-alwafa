@@ -5,7 +5,7 @@ App.page('denah', async function (view) {
   const edit = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip() && (!App.boot.modulMode || Sesi.is('SUPERADMIN'));
   let D = null, sel = null, pilihOrang = null, modeTampil = 'duduk', cari = '';
   const ZW = { VVIP: 'VVIP', VIP: 'VIP & Dosen', DOSEN: 'Dosen', WISUDAWAN: 'Wisudawan', WISUDAWATI: 'Wisudawati', PENDAMPING: 'Pendamping', UMUM: 'Tamu Umum', PANITIA: 'Panitia', SENAT: 'Senat', KOSONG: 'Cadangan' };
-  view.innerHTML = '<div class="card row mb" style="padding:14px" data-top></div><div class="grid" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start" data-grid><div class="card" data-map>' + UI.skeleton(10) + '</div><div class="col" data-side></div></div>';
+  view.innerHTML = '<div class="card row mb" style="padding:14px" data-top></div><div class="grid g-hp1" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start" data-grid><div class="card" data-map>' + UI.skeleton(10) + '</div><div class="col" data-side></div></div>';
   const elTop = view.querySelector('[data-top]'), elMap = view.querySelector('[data-map]'), elSide = view.querySelector('[data-side]');
   if (window.innerWidth < 1000) view.querySelector('[data-grid]').style.gridTemplateColumns = 'minmax(0,1fr)';
   const peserta = () => D.peserta, pById = () => { const m = {}; D.peserta.forEach((p) => m[p.jenis + ':' + p.id] = p); return m; };
@@ -96,5 +96,5 @@ App.page('denah', async function (view) {
     modal({ title: 'Tata Letak Denah', size: 'xwide', body, buttons: [{ label: 'Batal' }, { label: 'Simpan tata letak', cls: 'primary', onClick: async () => { L.catatan = body.querySelector('[data-cat]').value.split('\n').map((x) => x.trim()).filter(Boolean); const r = await API.write('denah.saveLayout', { layout: L }); if (!r.success) return false; muat(true); } }] });
   }
   const muat = (fresh) => SWR.load('denah.get', {}, (d, c, err) => { if (err) { elMap.innerHTML = kosong('Gagal memuat denah', esc(err.message), 'error'); return; } D = d; render(); }, { maxAge: 10000, fresh });
-  await muat(true);
+  await muat();
 });

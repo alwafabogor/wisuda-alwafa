@@ -11,7 +11,7 @@ App.page('wa', async function (view, params) {
   async function status() {
     const el = view.querySelector('[data-status]');
     if (!Sesi.is('SUPERADMIN')) { el.innerHTML = ''; return; }
-    const r = await API.read('notif.config', {}); if (!r.success) return; cfg = r.data;
+    const r = await SW.SWR.get('notif.config', {}, { maxAge: 60000 }); if (!r.success) return; cfg = r.data;
     el.innerHTML = '<div class="row mb" style="gap:8px">' + pill('WhatsApp ' + (cfg.waAktif ? 'AKTIF' : 'NONAKTIF'), cfg.waAktif ? 'ok' : 'warn') + pill('Email ' + (cfg.emailAktif ? 'AKTIF' : 'NONAKTIF'), cfg.emailAktif ? 'ok' : 'mute') + pill(cfg.tokenAda ? 'Token Fonnte ' + cfg.token : 'Token Fonnte belum diisi', cfg.tokenAda ? 'mute' : 'bad') + pill(cfg.trigger ? 'Pengirim otomatis berjalan' : 'Trigger belum terpasang', cfg.trigger ? 'ok' : 'warn') + '<span class="small muted">Sisa kuota email hari ini: ' + angka(cfg.kuotaEmail) + '</span></div>';
   }
 
@@ -19,7 +19,7 @@ App.page('wa', async function (view, params) {
   let aud = null, pilih = new Set(), blTimer = null;
   async function blast() {
     const SUMBER = [['', 'Semua kontak CRM'], ['Wisudawan', 'Wisudawan'], ['Tamu', 'Tamu'], ['Panitia', 'Panitia'], ['Manual', 'Manual'], ['__manual', 'Tempel nomor manual']];
-    body.innerHTML = '<div class="grid" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px" data-g>' +
+    body.innerHTML = '<div class="grid g-hp1" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px" data-g>' +
       '<div class="col"><div class="card"><b>1. Penerima</b><div class="grid g3 mt"><label class="field"><span>Sumber / segmen</span><select class="inp" data-seg>' + SUMBER.map((s) => '<option value="' + s[0] + '">' + s[1] + '</option>').join('') + '</select></label>' +
       '<label class="field"><span>Kategori tamu</span><select class="inp" data-kat><option value="">Semua</option>' + ['VVIP', 'VIP', 'DOSEN', 'UMUM'].map((k) => '<option>' + k + '</option>').join('') + '</select></label><label class="field"><span>Tag</span><input class="inp" data-tag placeholder="mis. ortu"></label></div>' +
       '<label class="field mt" data-manualbox hidden><span>Satu baris: <code>08xxxx|Nama</code></span><textarea class="inp" rows="4" data-manual placeholder="081234567890|Bapak Ahmad"></textarea></label>' +
@@ -35,7 +35,7 @@ App.page('wa', async function (view, params) {
     const v = Object.assign({ nama: 'Bapak Ahmad' }, App.boot.vars || {});
     const prev = () => { g('[data-prev]').innerHTML = esc(g('[data-pesan]').value.replace(/\{(\w+)\}/g, (m, k) => v[k] != null ? v[k] : m)).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_([^_\n]+)_/g, '<i>$1</i>'); };
     const est = () => { const n = penerima().length, j = String(g('[data-jeda]').value).split('-').map(Number), rata = j.length > 1 ? (j[0] + j[1]) / 2 : j[0] || 5; g('[data-est]').innerHTML = n ? '<b>' + angka(n) + '</b> pesan · ' + Math.ceil(n / batch) + ' batch · ±' + Math.ceil(n * rata / 60) + ' menit' : 'Muat penerima dulu'; };
-    const r0 = await API.read('kegiatan.variabel', {}); if (r0.success) Object.assign(v, r0.data); prev();
+    const r0 = await SW.SWR.get('kegiatan.variabel', {}, { maxAge: 300000 }); if (r0.success) Object.assign(v, r0.data); prev();
     g('[data-pesan]').addEventListener('input', debounce(prev, 120));
     g('[data-jeda]').addEventListener('input', est);
     g('[data-batch]').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) { batch = Number(b.dataset.v); syncBatch(); est(); } });
@@ -82,7 +82,7 @@ App.page('wa', async function (view, params) {
       const r = await API.write('wa.blastCreate', { judul: g('[data-judul]').value, pesan: g('[data-pesan]').value, ukuranBatch: batch, jeda: g('[data-jeda]').value, sasaran: g('[data-seg]').value || 'CRM', penerima: list.map((x) => ({ id: x.id, hp: x.hp, nama: x.nama })) });
       if (r.success) { aud = null; renderAud(); est(); daftarBlast(); API.write('wa.blastProcess', { blastId: r.data.BlastID }, { silent: true }).then(daftarBlast); }
     };
-    g('[data-refbl]').onclick = daftarBlast;
+    g('[data-refbl]').onclick = () => daftarBlast(true);
     g('[data-bl]').addEventListener('click', async (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.next) { b.disabled = true; b.innerHTML = ic('hourglass_top') + 'Mengirim…'; await API.read('wa.blastProcess', { blastId: b.dataset.next }, { fresh: true }); daftarBlast(); }
@@ -91,9 +91,12 @@ App.page('wa', async function (view, params) {
     });
     daftarBlast();
   }
-  async function daftarBlast() {
-    const el = body.querySelector('[data-bl]'); if (!el) return;
-    const r = await API.read('wa.blastList', {}, { fresh: true }); if (!r.success) return;
+  function daftarBlast(segar) {   // v1.1: tampil dulu dari cache lokal, lalu diperbarui di latar
+    if (!body.querySelector('[data-bl]')) return;
+    return SW.SWR.load('wa.blastList', {}, (d) => { const el = body.querySelector('[data-bl]'); if (d && el) tampilBlast(el, d); }, { maxAge: 5000, fresh: segar === true });
+  }
+  function tampilBlast(el, data) {
+    const r = { data };
     el.innerHTML = r.data.length ? r.data.slice(0, 12).map((b) => '<div class="card flat" style="padding:12px"><div class="row sb"><b class="small">' + esc(b.Judul) + '</b>' + pill(b.Status) + '</div><div class="trk mt" style="height:8px;background:#ECE8DF;border-radius:6px;overflow:hidden"><i style="display:block;height:100%;width:' + b.persen + '%;background:#2E9466"></i></div>' +
       '<div class="row sb mt tiny"><span>' + angka(b.Terkirim) + ' terkirim · ' + angka(b.Gagal) + ' gagal · ' + angka(b.sisa) + ' sisa / ' + angka(b.Total) + '</span><span class="muted">batch ' + b.UkuranBatch + ' · ' + waktu(b.Tanggal) + '</span></div>' +
       '<div class="row mt" style="gap:6px">' + (b.Status === 'Berjalan' && b.sisa ? '<button class="btn xs primary" data-next="' + b.BlastID + '">' + ic('fast_forward') + 'Kirim batch berikutnya</button><button class="btn xs" data-stop="' + b.BlastID + '">' + ic('stop') + 'Hentikan</button>' : '') + '<button class="btn xs" data-lihat="' + b.BlastID + '">' + ic('list') + 'Rincian</button></div></div>').join('') : kosong('Belum ada blast', 'Blast pertama akan tampil di sini.', 'campaign');

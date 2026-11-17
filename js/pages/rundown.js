@@ -65,5 +65,5 @@ App.page('rundown', async function (view, params) {
   });
   const cp = view.querySelector('[data-copy]'); if (cp) cp.onclick = async () => { const r = await API.write('rundown.copyPlan', { dari: planId }); if (r.success) { planId = r.data.PlanID; muat(true); } };
   const fn = view.querySelector('[data-final]'); if (fn) fn.onclick = async () => { if (D.plan.IsFinal === 'YA') return toast(D.plan.Nama + ' sudah FINAL.', 'info'); if (await konfirmasi('Jadikan <b>' + esc(D.plan.Nama) + '</b> sebagai rundown FINAL? Semua HP panitia & layar MC akan mengikuti rencana ini.', { ya: 'Jadikan Final' })) { await API.write('rundown.setFinal', { PlanID: planId }); muat(true); } };
-  await muat(true);
+  await muat();
 });

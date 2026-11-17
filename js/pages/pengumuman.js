@@ -36,5 +36,5 @@ App.page('pengumuman', async function (view) {
     }
   }
   elList.addEventListener('click', async (e) => { const d = e.target.closest('[data-del]'); if (d && await konfirmasi('Hapus pengumuman ini?', { bahaya: true })) { await API.write('pengumuman.delete', { id: d.dataset.del }); muat(true); } });
-  muat(true);
+  muat();
 });

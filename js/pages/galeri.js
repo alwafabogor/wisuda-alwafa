@@ -9,7 +9,7 @@ App.page('galeri', async function (view) {
     '<div class="chipset mb" data-f></div><div class="masonry" data-g></div>';
   const g = view.querySelector('[data-g]');
   function render() {
-    view.querySelector('[data-f]').innerHTML = ['', ...KAT].map((k) => '<button class="chip" style="cursor:pointer;' + (f === k ? 'background:#1F1F1F;color:#fff' : '') + '" data-k="' + k + '">' + (k || 'Semua') + ' · ' + rows.filter((r) => !k || r.Kategori === k).length + '</button>').join('');
+    view.querySelector('[data-f]').innerHTML = ['', ...KAT].map((k) => '<button class="chip' + (f === k ? ' on' : '') + '" style="cursor:pointer;' + (f === k ? 'background:#1F1F1F;color:#fff' : '') + '" data-k="' + k + '">' + (k || 'Semua') + ' · ' + rows.filter((r) => !k || r.Kategori === k).length + '</button>').join('');
     const vis = rows.filter((r) => !f || r.Kategori === f);
     g.innerHTML = vis.length ? vis.map((r) => '<div class="ph" data-id="' + r.GaleriID + '"><img data-src="' + r.FileID + '" alt="' + esc(r.Keterangan || r.Kategori) + '"><div>' + pill(r.Kategori, 'mute') + (r.PakaiLPJ === 'YA' ? pill('LPJ', 'ok') : '') + '<span class="sp"></span>' + (kelola ? '<button class="btn xs" data-lpj-t>' + ic(r.PakaiLPJ === 'YA' ? 'bookmark_remove' : 'bookmark_add') + '</button><button class="btn xs" data-del>' + ic('delete') + '</button>' : '') + '</div></div>').join('') : '<div class="card" style="column-span:all">' + kosong('Belum ada foto', 'Unggah dokumentasi kegiatan di sini.', 'photo_library') + '</div>';
     const io = new IntersectionObserver((ents) => ents.forEach(async (en) => { if (!en.isIntersecting) return; io.unobserve(en.target); const u = await driveImg(en.target.dataset.src); if (u) en.target.src = u; }), { rootMargin: '200px' });
