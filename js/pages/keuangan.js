@@ -3,7 +3,8 @@ App.page('keuangan', async function (view) {
   const { esc, API, SWR, Sesi, drawer, modal, konfirmasi, toast, rupiah, ringkasRp, kompresGambar, bacaBase64, driveImg, eksporXLSX, angka } = SW;
   const { ic, pill, kosong, columns, formHtml, formVal, formCek, dropzone, PAL } = UI;
   if (App.perluKegiatan(view)) return;
-  const sa = Sesi.is('SUPERADMIN') && !App.arsip();
+  const sa = App.boleh('keuangan', Sesi.is('SUPERADMIN')) && !App.arsip();   // RAB & PJ (ikut Hak Akses Divisi)
+  const saAsli = Sesi.is('SUPERADMIN') && !App.arsip();                          // pemasukan: khusus Superadmin (v1.2)
   let D = null, tab = 'rab';
   view.innerHTML = App.head('Keuangan & RAB', 'Hanya terlihat oleh Panitia Pegawai. PJ Belanja yang ditunjuk mencatat penggunaan dana + invoice + bukti transfer — dashboard otomatis terbarui.', '<button class="btn" data-xls>' + ic('table_view') + 'Ekspor</button>' + (sa ? '<button class="btn" data-rabexcel>' + ic('upload_file') + 'RAB via Excel</button><button class="btn primary" data-addpos>' + ic('add') + 'Pos RAB</button>' : '')) +
     '<div data-top>' + UI.skeleton(4) + '</div><div class="tabs mt"><button data-t="rab" class="on">' + ic('receipt_long') + 'RAB & Realisasi</button><button data-t="masuk">' + ic('account_balance_wallet') + 'Pemasukan</button><button data-t="riwayat">' + ic('history') + 'Riwayat Belanja</button></div><div data-body></div>';
@@ -24,9 +25,14 @@ App.page('keuangan', async function (view) {
           return '<tr data-id="' + p.PosID + '" style="cursor:pointer"><td><b>' + esc(p.Item) + '</b>' + (p.SumberPcs === 'WISUDAWAN' ? '<div class="tiny muted">pcs otomatis = jumlah wisudawan</div>' : '') + '</td><td class="r num small">' + angka(p.Qty) + ' × ' + angka(p.PcsEfektif) + ' × ' + rupiah(p.Harga) + '</td><td class="r num b">' + rupiah(p.Nominal) + '</td><td>' + (p.PJNama ? '<span class="person">' + UI.avatar(p.PJNama, '', 'sm') + '<span class="small">' + esc(p.PJNama) + (mine ? ' (Anda)' : '') + '</span></span>' : '<span class="muted small">— belum ditunjuk —</span>') + '</td><td style="min-width:140px"><div class="small num">' + rupiah(p.Terpakai) + '</div><div class="bar light" style="height:6px"><i style="width:' + pct + '%;' + (p.Status === 'MELEBIHI' ? 'background:#991B1B' : '') + '"></i></div></td><td>' + pill(p.Status === 'MELEBIHI' ? 'Melebihi' : p.Status === 'SESUAI' ? 'Sesuai' : p.Status === 'PROSES' ? 'Proses' : 'Belum', p.Status === 'MELEBIHI' ? 'bad' : p.Status === 'SESUAI' ? 'ok' : p.Status === 'PROSES' ? 'info' : 'mute') + '</td><td class="act">' + (mine || sa ? '<button class="btn xs primary" data-real="' + p.PosID + '">' + ic('add') + 'Realisasi</button>' : '') + '</td></tr>';
         }).join('')).join('') + '</tbody><tfoot><tr><td colspan="2" class="r b">TOTAL</td><td class="r num b">' + rupiah(D.ringkas.totalRAB) + '</td><td></td><td class="num b">' + rupiah(D.ringkas.totalRealisasi) + '</td><td colspan="2"></td></tr></tfoot></table></div></div>';
     } else if (tab === 'masuk') {
-      const boleh = sa || (Sesi.is('PEGAWAI') && Sesi.flag('PJ_BELANJA'));
-      body.innerHTML = '<div class="row sb mb"><span class="muted">Biaya per wisudawan: <b>' + rupiah(D.ringkas.biayaPerWisudawan) + '</b> (atur di Pengaturan → Variabel: <span class="kbd">biaya_wisuda</span>)</span>' + (boleh && !App.arsip() ? '<button class="btn primary" data-addmasuk>' + ic('add') + 'Catat pemasukan</button>' : '') + '</div><div class="card pad0"><table class="tbl"><thead><tr><th>Tanggal</th><th>Sumber</th><th class="r">Nominal</th><th>Keterangan</th><th>Bukti</th></tr></thead><tbody>' +
-        (D.pemasukan.map((x) => '<tr><td>' + esc(SW.tglID(x.Tanggal)) + '</td><td>' + esc(x.Sumber || '-') + '</td><td class="r num b">' + rupiah(x.Nominal) + '</td><td>' + esc(x.Keterangan || '') + '</td><td>' + (x.BuktiID ? '<button class="btn xs" data-lihat="' + x.BuktiID + '">' + ic('image') + '</button>' : '') + '</td></tr>').join('') || '<tr><td colspan="5">' + kosong('Belum ada pemasukan tercatat', 'Proyeksi dihitung dari biaya per wisudawan.', 'account_balance_wallet') + '</td></tr>') + '</tbody></table></div>';
+      const boleh = saAsli, total = D.pemasukan.reduce((t, x) => t + (Number(x.Nominal) || 0), 0);
+      body.innerHTML = '<div class="row sb mb"><span class="muted">Biaya per wisudawan: <b>' + rupiah(D.ringkas.biayaPerWisudawan) + '</b> (atur di Pengaturan → Variabel: <span class="kbd">biaya_wisuda</span>)</span>' + (boleh ? '<button class="btn primary" data-addmasuk>' + ic('add') + 'Catat pemasukan</button>' : '') + '</div>' +
+        (boleh ? '' : '<p class="small muted" style="margin-top:-6px">' + ic('lock') + ' Pemasukan dicatat, diubah, dan dihapus oleh Superadmin.</p>') +
+        '<div class="card pad0"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tanggal</th><th>Sumber</th><th class="r">Nominal</th><th>Keterangan</th><th>Bukti</th>' + (boleh ? '<th></th>' : '') + '</tr></thead><tbody>' +
+        (D.pemasukan.map((x) => '<tr data-masuk="' + esc(x.PemasukanID) + '"><td class="c1">' + esc(SW.tglID(x.Tanggal)) + '</td><td>' + esc(x.Sumber || '-') + '</td><td class="r num b">' + rupiah(x.Nominal) + '</td><td>' + esc(x.Keterangan || '') + '</td><td>' + (x.BuktiID ? '<button class="btn xs" data-lihat="' + x.BuktiID + '">' + ic('image') + '</button>' : '') + '</td>' +
+          (boleh ? '<td class="act"><button class="btn xs" data-ubahmasuk="' + esc(x.PemasukanID) + '" title="Ubah">' + ic('edit') + '</button><button class="btn xs" data-hapusmasuk="' + esc(x.PemasukanID) + '" title="Hapus">' + ic('delete') + '</button></td>' : '') + '</tr>').join('') ||
+          '<tr><td colspan="' + (boleh ? 6 : 5) + '">' + kosong('Belum ada pemasukan tercatat', 'Proyeksi dihitung dari biaya per wisudawan.', 'account_balance_wallet') + '</td></tr>') + '</tbody>' +
+        (D.pemasukan.length ? '<tfoot><tr><td colspan="2" class="r b">TOTAL</td><td class="r num b">' + rupiah(total) + '</td><td colspan="' + (boleh ? 3 : 2) + '"></td></tr></tfoot>' : '') + '</table></div></div>';
     } else {
       body.innerHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Tanggal</th><th>Pos</th><th>Vendor</th><th class="r">Nominal</th><th>Oleh</th><th>Berkas</th><th>Status</th></tr></thead><tbody>' +
         (D.realisasi.map((x) => { const p = D.pos.find((y) => y.PosID === x.PosID) || {}; return '<tr><td>' + esc(SW.tglID(x.Tanggal)) + '</td><td>' + esc(p.Item || x.PosID) + '</td><td>' + esc(x.Vendor || '-') + '</td><td class="r num b">' + rupiah(x.Nominal) + '</td><td class="small">' + esc(x.OlehNama || '') + '</td><td>' + (x.InvoiceID ? '<button class="btn xs" data-lihat="' + x.InvoiceID + '">Invoice</button> ' : '') + (x.BuktiTFID ? '<button class="btn xs" data-lihat="' + x.BuktiTFID + '">TF</button>' : '') + '</td><td>' + pill(x.Status) + '</td></tr>'; }).join('') || '<tr><td colspan="7">' + kosong('Belum ada belanja', '', 'shopping_cart') + '</td></tr>') + '</tbody></table></div>';
@@ -72,16 +78,25 @@ App.page('keuangan', async function (view) {
     const b = document.createElement('div'); b.innerHTML = formHtml(F, p || { Qty: 1, Pcs: 1 });
     modal({ title: p ? 'Ubah Pos RAB' : 'Pos RAB Baru', size: 'wide', body: b, buttons: [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', onClick: async () => { if (!formCek(b, F)) return false; const v = formVal(b, F); if (p) v.PosID = p.PosID; const r = await API.write('keu.savePos', v); if (!r.success) return false; muat(true); } }] });
   }
-  function formMasuk() {
-    const wis = [['', '— umum —']];
+  function formMasuk(r) {
     const F = [{ k: 'Tanggal', label: 'Tanggal', type: 'date', def: new Date().toISOString().slice(0, 10) }, { k: 'Nominal', label: 'Nominal', type: 'number', req: true }, { k: 'Sumber', label: 'Sumber', ph: 'Biaya wisuda / donasi / yayasan' }, { k: 'Keterangan', label: 'Keterangan', full: true }];
-    const b = document.createElement('div'); b.innerHTML = formHtml(F) + '<div class="mt" data-dz></div>'; let file = null;
-    dropzone(b.querySelector('[data-dz]'), { label: 'Bukti (opsional)', onFile: (f, prev) => { file = f; prev.innerHTML = '<span class="pill ok">' + esc(f.name) + '</span>'; } });
-    modal({ title: 'Catat Pemasukan', body: b, buttons: [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', onClick: async () => { if (!formCek(b, F)) return false; const v = formVal(b, F); if (file) v.BuktiID = await unggah(file, 'bukti'); const r = await API.write('data.save', { tabel: 'Pemasukan', row: v }); if (!r.success) return false; muat(true); } }] });
+    const b = document.createElement('div'); b.innerHTML = formHtml(F, r ? Object.assign({}, r, { Tanggal: String(r.Tanggal || '').slice(0, 10) }) : {}) + '<div class="mt" data-dz></div>' + (r && r.BuktiID ? '<p class="small muted">Bukti tersimpan. Unggah berkas baru untuk menggantinya.</p>' : ''); let file = null;
+    dropzone(b.querySelector('[data-dz]'), { label: r && r.BuktiID ? 'Ganti bukti (opsional)' : 'Bukti (opsional)', onFile: (f, prev) => { file = f; prev.innerHTML = '<span class="pill ok">' + esc(f.name) + '</span>'; } });
+    modal({ title: r ? 'Ubah Pemasukan' : 'Catat Pemasukan', body: b, buttons: [{ label: 'Batal' }, { label: 'Simpan', cls: 'primary', icon: 'save', onClick: async () => {
+      if (!formCek(b, F)) return false; const v = formVal(b, F); if (r) v.PemasukanID = r.PemasukanID;
+      if (file) v.BuktiID = await unggah(file, 'bukti');
+      const x = await API.write('data.save', { tabel: 'Pemasukan', row: v }); if (!x.success) return false; muat();
+    } }] });
+  }
+  async function hapusMasuk(r) {
+    if (!(await konfirmasi('Hapus pemasukan <b>' + rupiah(r.Nominal) + '</b> (' + esc(r.Sumber || '-') + ', ' + esc(SW.tglID(r.Tanggal)) + ')? Tindakan ini tidak bisa dibatalkan.', { bahaya: true, ya: 'Hapus' }))) return;
+    const x = await API.write('data.delete', { tabel: 'Pemasukan', ids: [r.PemasukanID] }); if (x.success) muat();
   }
   body.addEventListener('click', (e) => {
     const l = e.target.closest('[data-lihat]'); if (l) return lihat(l.dataset.lihat);
-    if (e.target.closest('[data-addmasuk]')) return formMasuk();
+    if (e.target.closest('[data-addmasuk]')) return formMasuk(null);
+    const um = e.target.closest('[data-ubahmasuk]'); if (um) return formMasuk(D.pemasukan.find((x) => x.PemasukanID === um.dataset.ubahmasuk));
+    const hm = e.target.closest('[data-hapusmasuk]'); if (hm) return hapusMasuk(D.pemasukan.find((x) => x.PemasukanID === hm.dataset.hapusmasuk));
     const tr = e.target.closest('tr[data-id]'); if (tr) drawerPos(D.pos.find((p) => p.PosID === tr.dataset.id));
   });
   view.querySelectorAll('[data-t]').forEach((b) => b.onclick = () => { tab = b.dataset.t; view.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('on', x === b)); render(); });

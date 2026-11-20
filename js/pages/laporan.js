@@ -2,7 +2,7 @@
 App.page('laporan', async function (view, params) {
   const { esc, API, Sesi, modal, toast, rupiah, angka, tglID, driveImg, eksporXLSX, unduh } = SW, { ic, pill, kosong } = UI;
   if (App.perluKegiatan(view)) return;
-  const bolehEdit = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip();
+  const bolehEdit = App.boleh('laporan', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip();
   let tab = ['lpj', 'evaluasi', 'data'].indexOf(params.tab) > -1 ? params.tab : 'lpj', L = null, formId = '';
   view.innerHTML = '<div class="noprint">' + App.head('Laporan & LPJ', 'Disusun otomatis dari data aplikasi. Bagian berlatar kuning bisa disunting.', '<span data-aksi class="row"></span>') +
     '<div class="tabs" data-t><button data-v="lpj">' + ic('description') + 'LPJ Wisuda</button><button data-v="evaluasi">' + ic('query_stats') + 'Evaluasi Feedback</button><button data-v="data">' + ic('table_view') + 'Data Aplikasi</button></div></div><div data-body>' + UI.skeleton(10) + '</div>';

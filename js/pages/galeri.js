@@ -3,7 +3,7 @@ App.page('galeri', async function (view) {
   const { esc, API, SWR, Sesi, modal, konfirmasi, toast, kompresGambar, driveImg } = SW, { ic, pill, kosong, dropzone } = UI;
   if (App.perluKegiatan(view)) return;
   const KAT = ['Prosesi', 'Sambutan', 'Tamu', 'Booth Foto', 'Karangan Bunga', 'Dekorasi', 'Wisudawan Terbaik', 'Foto Bersama', 'Lainnya'];
-  const upload = !Sesi.is('MC') && !App.arsip(), kelola = Sesi.is('SUPERADMIN', 'KOORDINATOR');
+  const upload = App.boleh('galeri', !Sesi.is('MC')) && !App.arsip(), kelola = App.boleh('galeri', Sesi.is('SUPERADMIN', 'KOORDINATOR'));
   let rows = [], f = '';
   view.innerHTML = App.head('Galeri Dokumentasi', 'Foto yang ditandai <b>Pakai di LPJ</b> otomatis menjadi lampiran Laporan Pertanggungjawaban.') + (upload ? '<div class="card mb"><div class="row" style="align-items:flex-start"><div style="flex:1" data-dz></div><div class="col" style="width:240px"><label class="field"><span>Kategori</span><select class="inp" data-kat>' + KAT.map((k) => '<option>' + k + '</option>').join('') + '</select></label><label class="check"><input type="checkbox" data-lpj checked> Pakai di LPJ</label><div class="small muted" data-prog></div></div></div></div>' : '') +
     '<div class="chipset mb" data-f></div><div class="masonry" data-g></div>';

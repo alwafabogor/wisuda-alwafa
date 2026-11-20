@@ -2,7 +2,7 @@
 App.page('urutan', async function (view) {
   const { esc, API, SWR, Sesi, lib, toast, konfirmasi } = SW, { ic, pill, kosong, avatar } = UI;
   if (App.perluKegiatan(view)) return;
-  const edit = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip();
+  const edit = App.boleh('urutan', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip();
   let tab = 'mhs', D = null, ubah = false;
   view.innerHTML = App.head('Urutan Maju', 'Urutan maju mengisi urutan masuk, daftar panggil MC, dan urutan slide PPT secara otomatis.', '<button class="btn" data-print>' + ic('print') + 'Cetak</button>' + (edit ? '<select class="inp sm" data-cara style="width:auto"><option value="prodi_jk">Prodi → Ikhwan/Akhwat</option><option value="jk_prodi">Ikhwan/Akhwat → Prodi</option><option value="nama">Abjad nama</option></select><button class="btn" data-auto>' + ic('auto_awesome') + 'Urutkan otomatis</button><button class="btn primary" data-save disabled>' + ic('save') + 'Simpan urutan</button>' : '')) +
     '<div class="tabs"><button data-t="mhs" class="on">' + ic('school') + 'Mahasiswa</button><button data-t="senat">' + ic('gavel') + 'Senat / Tokoh</button></div><div data-body>' + UI.skeleton(8) + '</div>';

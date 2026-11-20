@@ -2,7 +2,7 @@
 App.page('mc', async function (view, params) {
   const { esc, API, SWR, Sesi, Store, drawer, modal, konfirmasi, toast, Activity } = SW, { ic, pill, kosong, formHtml, formVal } = UI;
   if (App.perluKegiatan(view)) return;
-  const bisaEdit = Sesi.is('SUPERADMIN', 'KOORDINATOR', 'MC') && !App.arsip(), admin = Sesi.is('SUPERADMIN', 'KOORDINATOR');
+  const bisaEdit = App.boleh('mc', Sesi.is('SUPERADMIN', 'KOORDINATOR', 'MC')) && !App.arsip(), admin = App.boleh('mc', Sesi.is('SUPERADMIN', 'KOORDINATOR'));
   let mode = params.mode === 'editor' && bisaEdit ? 'editor' : 'baca';
   let R = null, idx = 0, ikutLive = Store.get('mc_ikut', true), fs = Store.get('mc_fs', 22), gelap = Store.get('mc_gelap', false), liveV = '';
   view.innerHTML = '<div class="row sb mb"><div class="seg" data-mode><button data-v="baca">' + ic('chrome_reader_mode') + ' Panggung</button>' + (bisaEdit ? '<button data-v="editor">' + ic('edit_note') + ' Editor</button>' : '') + '</div><span data-live></span></div><div data-body>' + UI.skeleton(8) + '</div>';

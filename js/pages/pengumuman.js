@@ -2,7 +2,7 @@
 App.page('pengumuman', async function (view) {
   const { esc, API, SWR, Sesi, konfirmasi, toast } = SW, { ic, pill, kosong } = UI;
   if (App.perluKegiatan(view)) return;
-  const pembuat = Sesi.is('SUPERADMIN', 'KOORDINATOR', 'KADIV') && !App.arsip(), kd = Sesi.is('KADIV');
+  const pembuat = App.boleh('pengumuman', Sesi.is('SUPERADMIN', 'KOORDINATOR', 'KADIV')) && !App.arsip(), kd = Sesi.is('KADIV');
   const notif = App.boot.settings || {};
   view.innerHTML = App.head('Pengumuman', kd ? 'Kirim pengumuman ke anggota divisi Anda — muncul sebagai pop-up di aplikasi mereka.' : 'Pengumuman muncul sebagai pop-up di aplikasi panitia; tamu & wisudawan melihatnya di tautan undangan pribadi.') +
     '<div class="grid ' + (pembuat ? 'g2' : '') + '"><div class="col" data-list>' + UI.skeleton(5) + '</div>' + (pembuat ? '<div class="card" data-form></div>' : '') + '</div>';

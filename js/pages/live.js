@@ -2,7 +2,7 @@
 App.page('live', async function (view) {
   const { esc, API, Sesi, Store, konfirmasi, toast, Activity } = SW, { ic, pill, kosong } = UI;
   if (App.perluKegiatan(view)) return;
-  const ctrl = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip();
+  const ctrl = App.boleh('rundown', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip();
   const KEY = 'live:' + Sesi.kid;
   let S = Store.get(KEY, null), v = '', offset = 0, lastOk = S ? S.at : 0, buka = false;
   view.innerHTML = '<div style="max-width:720px;margin:0 auto" data-root></div>';

@@ -1,6 +1,6 @@
 /* Service Worker SIM Wisuda — app shell instan + bekerja luring untuk aset statis.
    Aturan: permintaan ke Google Apps Script (script.google.com / googleusercontent) TIDAK PERNAH di-cache. */
-const VERSI = 'simwisuda-v1.1.0';
+const VERSI = 'simwisuda-v1.2.0';
 const SHELL = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const SHELL = [
   './icons/icon-512.png'
 ];
 const PAGES = [
+  './js/pages/akses.js',
   './js/pages/checklist.js',
   './js/pages/dashboard.js',
   './js/pages/denah.js',

@@ -6,7 +6,7 @@
 (function (W) {
   'use strict';
   const CFG = W.APP_CONFIG || {};
-  const VERSI = '1.1.0';
+  const VERSI = '1.2.0';
 
   /* ------------------------------------------------------------ util */
   const $ = (s, el) => (el || document).querySelector(s);
@@ -75,6 +75,7 @@
     if (res && res.code === 401 && action !== 'auth.google') { Sesi.hapus(); if (W.App) W.App.keLogin('Sesi berakhir. Silakan masuk lagi.'); }
     if (res && res.nq > 0) Drain.jadwal();
     if (res && res.code === 423 && res.reason === 'MODE' && W.App) W.App.segarkanBoot();
+    if (res && res.reason === 'AKSES_DIVISI' && W.App && Date.now() - (tangani._ak || 0) > 15000) { tangani._ak = Date.now(); W.App.segarkanBoot(); }   // hak akses divisi diubah Superadmin
     return res;
   }
   const API = {

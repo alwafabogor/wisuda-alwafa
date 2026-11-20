@@ -2,7 +2,7 @@
 App.page('denah', async function (view) {
   const { esc, API, SWR, Sesi, modal, konfirmasi, toast } = SW, { ic, pill, kosong } = UI;
   if (App.perluKegiatan(view)) return;
-  const edit = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip() && (!App.boot.modulMode || Sesi.is('SUPERADMIN'));
+  const edit = App.boleh('denah', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip() && (!App.boot.modulMode || Sesi.is('SUPERADMIN'));
   let D = null, sel = null, pilihOrang = null, modeTampil = 'duduk', cari = '';
   const ZW = { VVIP: 'VVIP', VIP: 'VIP & Dosen', DOSEN: 'Dosen', WISUDAWAN: 'Wisudawan', WISUDAWATI: 'Wisudawati', PENDAMPING: 'Pendamping', UMUM: 'Tamu Umum', PANITIA: 'Panitia', SENAT: 'Senat', KOSONG: 'Cadangan' };
   view.innerHTML = '<div class="card row mb" style="padding:14px" data-top></div><div class="grid g-hp1" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start" data-grid><div class="card" data-map>' + UI.skeleton(10) + '</div><div class="col" data-side></div></div>';
@@ -18,7 +18,7 @@ App.page('denah', async function (view) {
     elTop.innerHTML = '<div class="seg"><button data-mt="duduk" class="' + (modeTampil === 'duduk' ? 'on' : '') + '">' + ic('event_seat') + ' Mode Duduk</button><button data-mt="prosesi" class="' + (modeTampil === 'prosesi' ? 'on' : '') + '">' + ic('alt_route') + ' Mode Prosesi</button></div>' +
       (final ? pill('STATUS: FINAL', 'ok') : pill('DRAFT', 'warn')) + (st.ganda.length ? pill(st.ganda.length + ' kursi ganda', 'bad') : pill('0 kursi ganda', 'mute')) + '<span class="small muted">Terisi ' + st.terisi + '/' + st.kapasitas + ' · ' + st.belum + ' peserta belum dapat kursi</span><span class="sp"></span>' +
       (edit && !final ? '<button class="btn sm" data-a="layout">' + ic('dashboard_customize') + 'Tata letak</button><button class="btn sm" data-a="auto">' + ic('auto_awesome') + 'Isi otomatis</button><button class="btn sm" data-a="clear">' + ic('mop') + 'Kosongkan</button>' : '') +
-      (Sesi.is('SUPERADMIN', 'KOORDINATOR', 'PEGAWAI') ? '<a class="btn sm" href="#/studio?jenis=LABEL">' + ic('print') + 'Cetak Label (24/A4)</a>' : '') +
+      (App.boleh('studio', Sesi.is('SUPERADMIN', 'KOORDINATOR', 'PEGAWAI'), 'baca') ? '<a class="btn sm" href="#/studio?jenis=LABEL">' + ic('print') + 'Cetak Label (24/A4)</a>' : '') +
       (edit ? (final ? '<button class="btn sm" data-a="draft">' + ic('lock_open') + 'Buka kunci</button>' : '<button class="btn sm primary" data-a="final">' + ic('lock') + 'Tandai Final</button>') : '');
     const blok = (D.layout.blok || []), kursi = D.kursi, perBlok = {};
     kursi.forEach((k) => (perBlok[k.Blok] = perBlok[k.Blok] || []).push(k));

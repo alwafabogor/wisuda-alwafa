@@ -28,7 +28,8 @@
     { id: 'kuisioner', label: 'Kuisioner', icon: 'quiz', roles: ALL, modul: 'kuisioner' },
     { id: 'galeri', label: 'Galeri', icon: 'photo_library', roles: ALL, modul: 'galeri' },
     { id: 'laporan', label: 'Laporan & LPJ', icon: 'description', roles: [SA, KU, PG], modul: 'laporan' },
-    { id: 'pengaturan', label: 'Pengaturan', icon: 'settings', roles: [SA], modul: 'inti', grp: 'Sistem' }
+    { id: 'pengaturan', label: 'Pengaturan', icon: 'settings', roles: [SA], modul: 'inti', grp: 'Sistem' },
+    { id: 'akses', label: 'Hak Akses Divisi', icon: 'admin_panel_settings', roles: [SA], modul: 'inti' }
   ];
   const PAGES = {};
   const App = {
@@ -37,7 +38,9 @@
     page(id, render) { PAGES[id] = render; },
     bolehMenu(m) {
       const me = Sesi.me; if (!me) return false;
-      const peran = m.roles.indexOf(me.role) > -1 || (m.flag && (me.flags || []).indexOf(m.flag) > -1);
+      // v1.2: divisi pegawai yang diatur Superadmin → menu fitur mengikuti Hak Akses Divisi (penanda pribadi tetap berlaku)
+      const lv = me.aksesMenu && me.aksesMenu[m.id], punyaFlag = !!(m.flag && (me.flags || []).indexOf(m.flag) > -1);
+      const peran = lv ? (lv !== 'tidak' || punyaFlag) : (m.roles.indexOf(me.role) > -1 || punyaFlag);
       if (!peran) return false;
       const mm = this.boot && this.boot.modulMode;
       if (mm && me.role !== SA && mm.indexOf(m.modul) === -1) return false;
@@ -45,6 +48,10 @@
       return true;
     },
     menuSaya() { return MENU.filter((m) => this.bolehMenu(m)); },
+    /** Level fitur akun ini bila divisinya diatur Superadmin ('crud' | 'baca' | 'tidak'), selain itu null. */
+    akses(fitur) { const a = Sesi.me && Sesi.me.akses; return a ? (a[fitur] || 'tidak') : null; },
+    /** Boleh menulis (atau melihat bila butuh = 'baca') fitur ini? Tanpa pengaturan divisi → nilai bawaan peran. */
+    boleh(fitur, bawaan, butuh) { const lv = this.akses(fitur); if (!lv) return !!bawaan; return butuh === 'baca' ? lv !== 'tidak' : lv === 'crud'; },
     beranda() { const me = Sesi.me || {}; const m = this.menuSaya(); if (me.role === MC && m.some((x) => x.id === 'mc')) return 'mc'; if (Sesi.flag('PETUGAS_SCAN') && [AC, PG].indexOf(me.role) > -1 && this.boot && this.boot.mode !== 'NORMAL') return 'scan'; return (m[0] || {}).id || 'dashboard'; },
 
     /* -------------------------------------------------- mulai */
@@ -68,7 +75,11 @@
     },
     async segarkanBoot() {
       const r = await API.read('app.boot', {}, { noBatch: true });
-      if (r.success) { const modeLama = this.boot && this.boot.mode; this.terapkanBoot(r.data); this.renderNav(); this.renderSubbar(); if (modeLama !== r.data.mode) { toast('Mode aplikasi berubah: ' + r.data.mode, 'info'); this.route(); } }
+      if (r.success) {
+        const modeLama = this.boot && this.boot.mode; this.terapkanBoot(r.data); this.renderNav(); this.renderSubbar();
+        if (modeLama !== r.data.mode) { toast('Mode aplikasi berubah: ' + r.data.mode, 'info'); this.route(); }
+        else if (this.cur) { const it = MENU.find((x) => x.id === this.cur); if (it && !this.bolehMenu(it)) this.route(); }   // hak akses divisi berubah
+      }
     },
     keLogin(pesan) { this.stopTimers(); this.layarLogin(false, pesan); },
 
@@ -169,7 +180,7 @@
           menu.forEach((m) => { if (!PAGES[m.id]) this.muatHalaman(m.id).catch(() => { }); });
           const PF = { dashboard: [['dashboard.get', {}]], master: [['data.list', { tabel: 'Wisudawan' }]], rundown: [['rundown.get', { planId: '' }]], denah: [['denah.get', {}]],
             checklist: [['checklist.get', {}]], keuangan: [['keu.get', {}]], pengumuman: [['pengumuman.list', {}]], urutan: [['urutan.get', {}]], mc: [['mc.render', {}]],
-            rekapscan: [['scan.report', { jenis: 'HADIR' }]], kegiatan: [['kegiatan.list', {}]], galeri: [['galeri.list', {}]], kuisioner: [['kuis.list', {}]], laporan: [['lpj.data', {}]], rekrutmen: [['rekrut.list', {}]], wa: [['notif.config', {}], ['kegiatan.variabel', {}]] };
+            rekapscan: [['scan.report', { jenis: 'HADIR' }]], kegiatan: [['kegiatan.list', {}]], galeri: [['galeri.list', {}]], kuisioner: [['kuis.list', {}]], laporan: [['lpj.data', {}]], rekrutmen: [['rekrut.list', {}]], akses: [['akses.get', {}]], wa: [['notif.config', {}], ['kegiatan.variabel', {}]] };
           const list = [];
           menu.forEach((m) => { if (m.id !== this.cur) (PF[m.id] || []).forEach((x) => list.push(x.concat([120000]))); });
           SWR.prefetch(list);

@@ -7,6 +7,8 @@ App.page('wa', async function (view, params) {
     '<div data-status></div><div class="tabs" data-t><button data-v="blast">' + ic('campaign') + 'Blast WA</button><button data-v="antrean">' + ic('schedule_send') + 'Antrean & Riwayat</button><button data-v="crm">' + ic('contacts') + 'CRM Kontak</button></div><div data-body>' + UI.skeleton(8) + '</div>';
   const body = view.querySelector('[data-body]');
   const waktu = (s) => s ? tglID(s) + ' ' + jamID(s) : '-';
+  // v1.2: divisi dengan hak "lihat saja" → tombol kirim/ubah disembunyikan (server juga menolak)
+  if (!App.boleh('wa', true)) { body.classList.add('baca-saja'); view.querySelector('[data-status]').insertAdjacentHTML('afterend', '<div class="notice info mb">' + ic('visibility') + '<div>Divisi Anda hanya dapat <b>melihat</b> WhatsApp & CRM.</div></div>'); }
 
   async function status() {
     const el = view.querySelector('[data-status]');

@@ -9,7 +9,11 @@ App.page('master', async function (view, params) {
   const divOpt = () => [['', '—']].concat(divisi().map((d) => [d.DivisiID, (d.Jenis === 'PEGAWAI' ? 'Pegawai · ' : 'Acara · ') + d.Nama]));
   const prodiNama = (id) => ((boot.prodi || []).find((p) => p.ProdiID === id) || {}).Singkatan || '';
   const divNama = (id) => (divisi().find((d) => d.DivisiID === id) || {}).Nama || '';
-  const tulis = Sesi.is('SUPERADMIN', 'KOORDINATOR');
+  const tulisBawaan = Sesi.is('SUPERADMIN', 'KOORDINATOR');
+  // v1.2: tabel milik fitur yang bisa diatur per divisi pegawai (Hak Akses Divisi)
+  const TABEL_MASTER = ['Wisudawan', 'Tamu', 'SusunanSenat', 'PejabatTTD'];
+  const bolehTulis = (t) => TABEL_MASTER.indexOf(t) > -1 ? App.boleh('master', tulisBawaan) : t === 'KelompokRAB' ? App.boleh('keuangan', tulisBawaan) : tulisBawaan;
+  let tulis = tulisBawaan;
 
   const T = {
     Wisudawan: { icon: 'school', key: 'WisudawanID', ph: 'Cari nama / NIM / kota…',
@@ -65,11 +69,12 @@ App.page('master', async function (view, params) {
   const tabs = Object.keys(T).filter((t) => !T[t].only || Sesi.is(...T[t].only));
   let cur = params.tab && T[params.tab] ? params.tab : 'Wisudawan', tbl = null, rows = [];
   view.innerHTML = App.head('Master Data', 'Data induk dipakai ulang di semua modul — diinput sekali, otomatis ke rundown, denah, QR, dokumen, dan laporan.',
-    (tulis ? '<button class="btn" data-imp>' + ic('upload_file') + 'Impor Excel</button>' : '') + '<button class="btn" data-exp>' + ic('download') + 'Ekspor</button>' + (tulis ? '<button class="btn primary" data-add>' + ic('add') + 'Tambah</button>' : '')) +
+    (tulisBawaan ? '<button class="btn" data-imp>' + ic('upload_file') + 'Impor Excel</button>' : '') + '<button class="btn" data-exp>' + ic('download') + 'Ekspor</button>' + (tabs.some(bolehTulis) ? '<button class="btn primary" data-add>' + ic('add') + 'Tambah</button>' : '')) +
     '<div class="tabs" data-tabs>' + tabs.map((t) => '<button data-t="' + t + '">' + ic(T[t].icon) + (T[t].label || t) + '</button>').join('') + '</div><div data-tbl></div>';
   const host = view.querySelector('[data-tbl]');
   function mount() {
     view.querySelectorAll('[data-t]').forEach((b) => b.classList.toggle('on', b.dataset.t === cur));
+    tulis = bolehTulis(cur); const tb = view.querySelector('[data-add]'); if (tb) tb.hidden = !tulis;
     const D = T[cur];
     tbl = table(host, { key: D.key, rowCls: (r) => r._pending ? 'pending' : '', cols: D.cols, ph: D.ph, searchKeys: D.search, filters: D.filters, filterFn: D.ff, pageSize: 30, emptyTitle: 'Belum ada data ' + (D.label || cur), emptyText: tulis ? 'Tambah manual atau impor dari Excel.' : '', emptyIcon: D.icon,
       tools: (cur === 'Tamu' ? '<button class="btn sm" data-kehormatan>' + ic('print') + 'Daftar Tamu Kehormatan</button>' : '') + (cur === 'Wisudawan' || cur === 'Tamu' || cur === 'Panitia' ? (tulis ? '<button class="btn sm" data-token>' + ic('qr_code_2') + 'Token QR</button>' : '') : ''),

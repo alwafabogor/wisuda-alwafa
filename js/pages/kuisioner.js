@@ -2,7 +2,7 @@
 App.page('kuisioner', async function (view) {
   const { esc, API, SWR, Sesi, drawer, modal, konfirmasi, toast, eksporXLSX } = SW, { ic, pill, kosong, hbars, columns, PAL } = UI;
   if (App.perluKegiatan(view)) return;
-  const admin = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip(), lihatHasil = Sesi.is('SUPERADMIN', 'KOORDINATOR', 'PEGAWAI');
+  const admin = App.boleh('kuisioner', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip(), lihatHasil = App.boleh('kuisioner', Sesi.is('SUPERADMIN', 'KOORDINATOR', 'PEGAWAI'), 'baca');
   const tabs = [['isi', 'Isi Kuisioner', 'edit_note']].concat(admin ? [['builder', 'Form Builder', 'construction']] : []).concat(lihatHasil ? [['hasil', 'Hasil & Analisis', 'insights']] : []);
   let tab = lihatHasil ? 'hasil' : 'isi', forms = [], fsel = '';
   view.innerHTML = App.head('Kuisioner Evaluasi', 'Penilaian layanan wisuda (konsumsi, acara, tamu, panggung, souvenir, dll) dari wisudawan, panitia acara, dan panitia pegawai.') +

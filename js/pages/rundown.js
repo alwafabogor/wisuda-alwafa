@@ -2,7 +2,7 @@
 App.page('rundown', async function (view, params) {
   const { esc, API, SWR, Sesi, drawer, modal, konfirmasi, toast, lib } = SW, { ic, pill, kosong, formHtml, formVal, formCek } = UI;
   if (App.perluKegiatan(view)) return;
-  const edit = Sesi.is('SUPERADMIN', 'KOORDINATOR') && !App.arsip();
+  const edit = App.boleh('rundown', Sesi.is('SUPERADMIN', 'KOORDINATOR')) && !App.arsip();
   let planId = params.plan || '', D = null;
   view.innerHTML = App.head('Rundown Acara', 'Susun beberapa rencana (Plan A/B/C), lalu tetapkan satu sebagai <b>FINAL</b> — itulah yang tampil di HP panitia dan layar MC.', '<a class="btn" href="#/live">' + ic('sensors') + 'Mode Live</a>' + (edit ? '<button class="btn" data-copy>' + ic('content_copy') + 'Plan baru</button><button class="btn primary" data-final>' + ic('verified') + 'Jadikan Final</button>' : '')) +
     '<div class="row mb" data-plans></div><div class="grid g-2-1"><div data-list>' + UI.skeleton(8) + '</div><div class="col" data-side></div></div>';
